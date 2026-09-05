@@ -74,6 +74,12 @@ def build_parser() -> argparse.ArgumentParser:
     sg.add_argument("--max-rules", type=int, default=10, help="Max candidates per run")
     sg.add_argument("--write", action="store_true",
                     help="Append verified rules into the book (only PASS+gate results)")
+
+    srv = sub.add_parser("serve", help="Start the REST API server (Phase 0 API-first)")
+    srv.add_argument("--host", default="127.0.0.1", help="Bind address (localhost default)")
+    srv.add_argument("--port", type=int, default=8503)
+    srv.add_argument("--workspace", default="", help="Root that local scans must stay under (default: cwd)")
+    srv.add_argument("--config", default="", help="Path to .sentinel.yml")
     return p
 
 
@@ -89,6 +95,9 @@ def main(argv: list[str] | None = None) -> int:
 
     if args.cmd == "fix":
         return _cmd_fix(args, config)
+
+    if args.cmd == "serve":
+        return _cmd_serve(args)
 
     if args.cmd == "ruleset":
         return _cmd_ruleset(args, config)
@@ -218,6 +227,22 @@ def _cmd_fix(args, config: SentinelConfig) -> int:
             print(f"ERROR: could not open fix PR: {e}", file=sys.stderr)
             print("Tip: run with a local --workspace and --target export to get the patches.")
             return 1
+    return 0
+
+
+def _cmd_serve(args) -> int:
+    """Run the FastAPI server (localhost by default; keeps the machine private)."""
+    try:
+        import uvicorn
+    except ImportError:
+        print("REST server dependencies missing. Install with: pip install -e '.[server]'",
+              file=sys.stderr)
+        return 2
+    from .api import create_app
+
+    app = create_app(args.config, workspace_root=args.workspace or None)
+    print(f"Serving Sentinel API on http://{args.host}:{args.port} (docs: /docs)", file=sys.stderr)
+    uvicorn.run(app, host=args.host, port=args.port, log_level="warning")
     return 0
 
 
