@@ -7,7 +7,7 @@ from dataclasses import dataclass, field
 
 import yaml
 
-DEFAULT_MODEL = "qwen2.5-coder:7b"
+DEFAULT_MODEL = "qwen2.5-coder:3b"
 
 
 @dataclass

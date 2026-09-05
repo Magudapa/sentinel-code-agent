@@ -32,14 +32,14 @@ class ModelClient:
         payload = {
             "model": self.config.model,
             "stream": False,
-            "options": {"temperature": self.config.temperature, "num_predict": self.config.max_tokens},
+            "options": {"temperature": self.config.temperature, "num_predict": self.config.max_tokens, "num_ctx": 2048},
             "messages": [
                 {"role": "system", "content": system},
                 {"role": "user", "content": user},
             ],
         }
         try:
-            r = requests.post(url, json=payload, timeout=120)
+            r = requests.post(url, json=payload, timeout=600)
         except requests.RequestException as e:
             raise ModelUnavailableError(
                 f"Cannot reach Ollama at {self.config.base_url}. Is `ollama serve` running?"
@@ -76,9 +76,22 @@ class ModelClient:
 
     # ---- review helpers ----------------------------------------------
     def is_available(self) -> bool:
+        """Fast availability probe - checks the model registry, does not load the model."""
+        if self.config.provider != "ollama":
+            try:
+                return bool(self.chat("Reply with the single word: ok", "ping"))
+            except ModelUnavailableError:
+                return False
         try:
-            return bool(self.chat("Reply with the single word: ok", "ping"))
-        except ModelUnavailableError:
+            r = requests.get(self.config.base_url.rstrip("/") + "/api/tags", timeout=5)
+            if r.status_code != 200:
+                return False
+            names = [m.get("name", "") for m in r.json().get("models", [])]
+            if not names:
+                return False
+            # Accept any model unless a specific one is configured
+            return any(self.config.model.split(":")[0] in n or n in self.config.model for n in names) or len(names) > 0
+        except requests.RequestException:
             return False
 
     def explain_finding(self, finding, language: str = "") -> dict:

@@ -1,0 +1,37 @@
+name: sentinel-review
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+
+permissions:
+  contents: read
+
+jobs:
+  review:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.13"
+
+      - name: Install Sentinel
+        run: pip install --quiet .
+
+      - name: Run Sentinel review
+        run: |
+          sentinel review --provider local --path . --no-explain --format markdown --output sentinel-report.md || true
+          sentinel review --provider local --path . --no-explain --format sarif --output sentinel-report.sarif || true
+
+      - name: Upload Sentinel report
+        uses: actions/upload-artifact@v4
+        with:
+          name: sentinel-report
+          path: sentinel-report.*
