@@ -16,4 +16,4 @@ jobs:
       - run: pip install -e ".[dev]"
       - run: pytest -q
       - run: ruff check .
-      - run: bandit -q -r sentinel -x sentinel/tests
+      - run: bandit -q -r sentinel -x sentinel/tests -c pyproject.toml
