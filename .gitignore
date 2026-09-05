@@ -18,3 +18,7 @@ htmlcov/
 sentinel-fixes/
 sentinel-sample-report.md
 .sentinel.yml
+e2e_report.md
+e2e_fixes.json
+e2e_final_*.md
+e2e_final_*.txt
