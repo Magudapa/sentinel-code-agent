@@ -1,0 +1,134 @@
+# Sentinel rule book — sql
+# The submission gate: rules are added here ONLY after the AI
+# cross-verification passes (sentinel ruleset generate/verify).
+# Every rule credits its author in `author`. ai_verified: true is set
+# only by the verifier — never by hand.
+meta:
+  language: sql
+  generated_by: sentinel ruleset
+rules:
+  - id: SQL-001
+    language: sql
+    description: Unconditional DROP TABLE
+    severity: critical
+    category: destructive
+    regex: '\bDROP\s+(TABLE|DATABASE|SCHEMA|VIEW)\b(?!\s+IF\s+EXISTS\b)'
+    message: Destructive drop with no guard.
+    fix: "Require review + backup; guard with IF EXISTS and a reviewed migration."
+    author: Magudapa
+    source: manual
+    ai_verified: false
+    vulnerable_example: "DROP TABLE users;"
+    safe_example: "DROP TABLE IF EXISTS temp_staging;"
+
+  - id: SQL-002
+    language: sql
+    description: DELETE without WHERE
+    severity: high
+    category: destructive
+    regex: '\bDELETE\s+FROM\b(?!.*\bWHERE\b)'
+    message: DELETE with no WHERE removes every row in the table.
+    fix: "Always add a WHERE clause; verify row_count before commit."
+    author: Magudapa
+    source: manual
+    ai_verified: false
+    vulnerable_example: "DELETE FROM order_items;"
+    safe_example: "DELETE FROM order_items WHERE order_id = 100;"
+
+  - id: SQL-003
+    language: sql
+    description: UPDATE without WHERE
+    severity: high
+    category: destructive
+    regex: '\bUPDATE\s+\w+\s+SET\b(?:(?!\bWHERE\b)[^;])*\s*;'
+    message: UPDATE with no WHERE rewrites the whole table.
+    fix: "Add a WHERE predicate or wrap in an explicit transaction with row-count check."
+    author: Magudapa
+    source: manual
+    ai_verified: false
+    vulnerable_example: "UPDATE accounts SET balance = 0;"
+    safe_example: "UPDATE accounts SET balance = 0 WHERE id = 5;"
+
+  - id: SQL-004
+    language: sql
+    description: TRUNCATE on a shared table
+    severity: high
+    category: destructive
+    regex: '\bTRUNCATE\s+(TABLE\s+)?\w+'
+    message: TRUNCATE is non-transactional in many engines and wipes all rows.
+    fix: "Use DELETE in a transaction, or guard the truncate behind a migration review."
+    author: Magudapa
+    source: manual
+    ai_verified: false
+    vulnerable_example: "TRUNCATE TABLE logs;"
+    safe_example: "DELETE FROM logs WHERE created_at < now() - interval '30 days';"
+
+  - id: SQL-005
+    language: sql
+    description: ALTER TABLE ... DROP without guard
+    severity: medium
+    category: destructive
+    regex: '\bALTER\s+TABLE\s+\w+\s+DROP\s+'
+    message: Dropping a column/constraint is irreversible without backup.
+    fix: "Run in a reviewed migration; verify the column is not referenced by views/procs."
+    author: Magudapa
+    source: manual
+    ai_verified: false
+    vulnerable_example: "ALTER TABLE accounts DROP COLUMN balance;"
+    safe_example: "ALTER TABLE accounts ADD COLUMN balance NUMERIC(12, 2);"
+
+  - id: SQL-006
+    language: sql
+    description: Dynamic SQL built by concatenation
+    severity: critical
+    category: injection
+    regex: '\b(?:EXEC\s*\(|EXECUTE\s+IMMEDIATE\b|sp_executesql\b[^,;]*\+)'
+    message: Ad-hoc dynamic SQL invites injection and plan-cache pollution.
+    fix: "Use parameterised queries: EXEC sp_executesql with parameters, or ORM parameter binding."
+    author: Magudapa
+    source: manual
+    ai_verified: false
+    vulnerable_example: "EXEC('SELECT * FROM users WHERE name = ''' + @name + ''')"
+    safe_example: "EXEC sp_executesql N'SELECT * FROM users WHERE name = @name', N'@name nvarchar(50)', @name"
+
+  - id: SQL-007
+    language: sql
+    description: SELECT * (wide read)
+    severity: low
+    category: best-practice
+    regex: '\bSELECT\s+\*\s+FROM\b'
+    message: SELECT * pulls columns the app may not need (perf/protocol friction).
+    fix: "Enumerate the columns you actually read."
+    author: Magudapa
+    source: manual
+    ai_verified: false
+    vulnerable_example: "SELECT * FROM users;"
+    safe_example: "SELECT id, email, created_at FROM users;"
+
+  - id: SQL-008
+    language: sql
+    description: BETWEEN without a meaningful lower bound
+    severity: low
+    category: best-practice
+    regex: '\bBETWEEN\s+0\s+AND\s+'
+    message: A 0 lower bound on a timestamp/date column scans more than intended.
+    fix: "Restrict by a sane range; prefer bounded comparisons on indexed columns."
+    author: Magudapa
+    source: manual
+    ai_verified: false
+    vulnerable_example: "WHERE created_at BETWEEN 0 AND 2147483647"
+    safe_example: "WHERE created_at BETWEEN '2026-01-01' AND '2026-02-01'"
+
+  - id: SQL-009
+    language: sql
+    description: GRANT ALL PRIVILEGES
+    severity: medium
+    category: auth
+    regex: '\bGRANT\s+ALL\s+PRIVILEGES\b'
+    message: Broad grant of all privileges to a principal.
+    fix: "Grant the minimum specific permissions (SELECT/INSERT on named tables)."
+    author: Magudapa
+    source: manual
+    ai_verified: false
+    vulnerable_example: "GRANT ALL PRIVILEGES ON *.* TO 'app'@'%';"
+    safe_example: "GRANT SELECT, INSERT ON orders TO 'app'@'10.0.0.%';"

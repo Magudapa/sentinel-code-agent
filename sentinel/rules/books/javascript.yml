@@ -1,0 +1,176 @@
+# Sentinel rule book — javascript (Node, React, TypeScript)
+# The submission gate: rules are added here ONLY after the AI
+# cross-verification passes (sentinel ruleset generate/verify).
+# Every rule credits its author in `author`. ai_verified: true is set
+# only by the verifier — never by hand.
+meta:
+  language: javascript
+  generated_by: sentinel ruleset
+rules:
+  - id: JS-001
+    language: javascript
+    description: innerHTML assignment (XSS)
+    severity: critical
+    category: xss
+    regex: '\.innerHTML\s*[+&]?=\s*'
+    message: Assigning to innerHTML parses markup and enables stored/reflected XSS.
+    fix: "Use textContent, or DOMParser + an allow-list sanitizer such as DOMPurify."
+    author: Magudapa
+    source: manual
+    ai_verified: false
+    vulnerable_example: "el.innerHTML = user.name"
+    safe_example: "el.textContent = user.name"
+
+  - id: JS-002
+    language: javascript
+    description: eval / new Function on runtime data
+    severity: critical
+    category: code-execution
+    regex: '\beval\s*\(|\bnew\s+Function\s*\('
+    message: eval runs any string as code - full remote code execution on injection.
+    fix: "Use JSON.parse, a template engine, or safe evaluators; never eval user input."
+    author: Magudapa
+    source: manual
+    ai_verified: false
+    vulnerable_example: "const res = eval('(' + payload + ')')"
+    safe_example: "const res = JSON.parse(payload)"
+
+  - id: JS-003
+    language: javascript
+    description: document.write
+    severity: critical
+    category: xss
+    regex: '\bdocument\.write\s*\('
+    message: document.write reparses the page and is a classic XSS sink.
+    fix: "Render via the DOM API (createElement / textContent) instead."
+    author: Magudapa
+    source: manual
+    ai_verified: false
+    vulnerable_example: "document.write('<b>' + name + '</b>')"
+    safe_example: "const h = document.createElement('b'); h.textContent = name"
+
+  - id: JS-004
+    language: javascript
+    description: dangerouslySetInnerHTML in React
+    severity: high
+    category: xss
+    regex: 'dangerouslySetInnerHTML'
+    message: React unwraps markup here - XSS if content is not fully trusted.
+    fix: "Render components/JSX, or run content through DOMPurify before insert."
+    author: Magudapa
+    source: manual
+    ai_verified: false
+    vulnerable_example: "<div dangerouslySetInnerHTML={{ __html: comment }} />"
+    safe_example: "<Comment text={comment} />"
+
+  - id: JS-005
+    language: javascript
+    description: child_process.exec with interpolated command
+    severity: high
+    category: injection
+    regex: "child_process\\.(exec|execSync)\\(\\s*[`\\\"'](?=.*\\$\\{)"
+    message: Shell command interpolates user data - command injection.
+    fix: "Use execFile/spawn with an args array (shell:false); never template a command string."
+    author: Magudapa
+    source: manual
+    ai_verified: false
+    vulnerable_example: "child_process.exec(`rm -rf ${dir}`)"
+    safe_example: "execFile('rm', ['-rf', dir])"
+
+  - id: JS-006
+    language: javascript
+    description: Math.random for security tokens/ids
+    severity: high
+    category: crypto
+    regex: '(token|id|key|nonce|csrf)\s*[=:]\s*.*Math\.random\s*\('
+    message: Math.random is not cryptographic - predictable tokens.
+    fix: "Use crypto.randomBytes / crypto.randomUUID in Node, or the platform CSPRNG."
+    author: Magudapa
+    source: manual
+    ai_verified: false
+    vulnerable_example: "const token = Math.random().toString(36)"
+    safe_example: "const token = crypto.randomBytes(24).toString('hex')"
+
+  - id: JS-007
+    language: javascript
+    description: session/auth token stored in localStorage
+    severity: high
+    category: secrets
+    regex: '(localStorage|sessionStorage)\.(setItem|set)\(\s*["''](token|auth|session|jwt)'
+    message: Tokens in web storage are readable by any script on the page (XSS escalates).
+    fix: "Prefer httpOnly+Secure cookies; or keep short-lived tokens and add XSS hardening."
+    author: Magudapa
+    source: manual
+    ai_verified: false
+    vulnerable_example: "localStorage.setItem('token', jwt)"
+    safe_example: "fetch('/api/login', { credentials: 'include' })"
+
+  - id: JS-008
+    language: javascript
+    description: Deprecated crypto.createCipher (stream cipher)
+    severity: medium
+    category: crypto
+    regex: '\bcrypto\.(createCipher|createDecipher)\b'
+    message: Legacy/derived ciphers are unsafe defaults.
+    fix: "Use aes-256-gcm with random IV + key from a KDF; verify auth tags."
+    author: Magudapa
+    source: manual
+    ai_verified: false
+    vulnerable_example: "const c = crypto.createCipher('aes192', secret)"
+    safe_example: "const c = crypto.createCipheriv('aes-256-gcm', key, iv)"
+
+  - id: JS-009
+    language: javascript
+    description: Electron BrowserWindow with nodeIntegration
+    severity: high
+    category: code-execution
+    regex: 'nodeIntegration\s*:\s*true'
+    message: Node integration lets any rendered page call the filesystem/network.
+    fix: "Keep nodeIntegration:false (default); expose only preload APIs via contextBridge."
+    author: Magudapa
+    source: manual
+    ai_verified: false
+    vulnerable_example: "new BrowserWindow({ nodeIntegration: true, contextIsolation: false })"
+    safe_example: "new BrowserWindow({ webPreferences: { contextIsolation: true } })"
+
+  - id: JS-010
+    language: javascript
+    description: fetch to cleartext http endpoint
+    severity: medium
+    category: transport
+    regex: "(fetch|axios\\.(get|post|put|patch|delete))\\(\\s*['\"]http://"
+    message: API call over plaintext HTTP exposes data.
+    fix: "Use https:// URLs (and avoid TLS-disabling options)."
+    author: Magudapa
+    source: manual
+    ai_verified: false
+    vulnerable_example: "axios.post('http://api.internal/orders', order)"
+    safe_example: "axios.post('https://api.internal/orders', order)"
+
+  - id: JS-011
+    language: javascript
+    description: process.env secret duplicated into a shell string
+    severity: medium
+    category: secrets
+    regex: "(exec|execSync|spawn|spawnSync)\\([^)]*(process\\.env)"
+    message: Secret passed through a shell string may leak into logs/ps output.
+    fix: "Pass secrets as env with shell:false, or as argv entries - never string-interpolated."
+    author: Magudapa
+    source: manual
+    ai_verified: false
+    vulnerable_example: "exec(`git clone ${process.env.TOKEN}@host`)"
+    safe_example: "execFile('git', ['clone', 'https://host/repo'], { env: { TOKEN } })"
+
+  - id: JS-012
+    language: javascript
+    description: Blind catch of promise rejection
+    severity: low
+    category: robustness
+    regex: '\.catch\s*\(\s*(\(\)\s*=>\s*\{\s*\}|function\s*\(\)\s*\{\s*\})\s*\)\s*$'
+    message: Rejection swallowed - failures silently ignored.
+    fix: "Log + handle the error or let it propagate to an error boundary."
+    author: Magudapa
+    source: manual
+    ai_verified: false
+    vulnerable_example: "fetch(url).catch(() => {})"
+    safe_example: "fetch(url).catch(err => logger.error('fetch failed', err))"

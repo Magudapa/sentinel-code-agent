@@ -10,6 +10,7 @@ Usage examples:
 from __future__ import annotations
 
 import argparse
+import json
 import sys
 
 from .config import SentinelConfig, load_config
@@ -55,6 +56,24 @@ def build_parser() -> argparse.ArgumentParser:
     f.add_argument("--target", choices=["export", "pr"], default="export",
                    help="export patched files locally, or open a remote fix PR")
     f.add_argument("--workspace", default="", help="Working tree to apply fixes against")
+
+    s = sub.add_parser("ruleset", help="Curate the multi-language rule books")
+    s.add_argument("--config", default="", help="Path to .sentinel.yml")
+    ssub = s.add_subparsers(dest="action", required=True)
+    sl = ssub.add_parser("list", help="List available languages, books, and rule counts")
+    sl.add_argument("--language", default="", help="Filter to one language")
+    sl.add_argument("--json", action="store_true", help="Emit JSON")
+    sv = ssub.add_parser("verify", help="Run the two-gate verification on one/all books")
+    sv.add_argument("--language", default="", help="Verify one language book (default: all)")
+    sv.add_argument("--only-unverified", action="store_true",
+                    help="Only check rules with ai_verified: false")
+    sg = ssub.add_parser("generate", help="AI-draft rules for a topic, then gate them")
+    sg.add_argument("--language", required=True, help="Target language (python/javascript/sql/...)")
+    sg.add_argument("--topic", required=True, help="Security topic, e.g. 'SQL injection in ORMs'")
+    sg.add_argument("--author", default="Magudapa", help="Author credited on generated rules")
+    sg.add_argument("--max-rules", type=int, default=10, help="Max candidates per run")
+    sg.add_argument("--write", action="store_true",
+                    help="Append verified rules into the book (only PASS+gate results)")
     return p
 
 
@@ -70,6 +89,9 @@ def main(argv: list[str] | None = None) -> int:
 
     if args.cmd == "fix":
         return _cmd_fix(args, config)
+
+    if args.cmd == "ruleset":
+        return _cmd_ruleset(args, config)
 
     provider = get_provider(args.provider)
 
@@ -197,6 +219,107 @@ def _cmd_fix(args, config: SentinelConfig) -> int:
             print("Tip: run with a local --workspace and --target export to get the patches.")
             return 1
     return 0
+
+
+def _cmd_ruleset(args, config: SentinelConfig) -> int:
+    """Subcommands: ruleset list | verify | generate (each with AI-gate semantics)."""
+    from .rules import (
+        available_books,
+        generate_verified,
+        known_languages,
+        load_book,
+        stamp,
+        verify_rule,
+        write_book,
+    )
+
+    if args.action == "list":
+        langs = [args.language] if args.language else known_languages()
+        rows = []
+        for lang in langs:
+            rules = load_book(lang)
+            rows.append({
+                "language": lang,
+                "rules": len(rules),
+                "verified": sum(1 for r in rules if r.ai_verified),
+                "authors": sorted({r.author for r in rules if r.author}),
+                "ids": [r.id for r in rules],
+                "book": available_books(),
+            })
+        if getattr(args, "json", False):
+            print(json.dumps(rows, indent=2))
+            return 0
+        for row in rows:
+            print(f"{row['language']:10} {row['rules']:3} rules "
+                  f"({row['verified']} ai-verified) authors={row['authors']}")
+            for rid in row["ids"]:
+                print(f"    {rid}")
+        return 0
+
+    if args.action == "verify":
+        from .model import ModelClient
+
+        langs = [args.language] if args.language else known_languages()
+        model = ModelClient(config.model)
+        if not model.is_available():
+            print("WARN: model not reachable - empirical gate only (no AI stamping).", file=sys.stderr)
+            model = None
+        changed = 0
+        for lang in langs:
+            rules = load_book(lang)
+            if not rules:
+                continue
+            for rule in rules:
+                if args.only_unverified and rule.ai_verified:
+                    continue
+                res = verify_rule(rule, model)
+                stamp(rule, res)
+                changed += 1
+                flag = "VERIFIED" if rule.ai_verified else "rejected"
+                print(f"  [{flag:8}] {rule.id:8} {rule.severity:9} {rule.description} "
+                      f"(gate1={res.empirical_notes}; gate2={res.ai_verdict})")
+            if changed:
+                write_book(lang, rules)
+        print(f"\nRe-verified {changed} rule(s); books updated on disk.")
+        return 0
+
+    if args.action == "generate":
+        from .model import ModelClient
+
+        item = args.language.lower()
+        if item not in known_languages():
+            # allow fuzzy language names; detect.LANGUAGES remains the source of truth
+            from .rules.detector import normalize_language
+            item = normalize_language(item)
+        model = ModelClient(config.model)
+        if not model.is_available():
+            print("ERROR: model not reachable - cannot run generation gate. Is Ollama up?",
+                  file=sys.stderr)
+            return 1
+        verified, results = generate_verified(
+            model, item, args.topic, args.author, max_rules=args.max_rules)
+        for res in results:
+            status = "VERIFIED" if res.verified else f"{res.ai_verdict} (gate1={res.empirical_notes})"
+            print(f"  [{status:22}] {res.rule_id} - {res.ai_reason[:140]}")
+        if not verified:
+            print("\nNo candidates passed the AI cross-verification gate. Nothing added.")
+            return 0
+        print(f"\n{len(verified)} rule(s) passed both gates.")
+        if args.write:
+            existing = load_book(item)
+            seen = {r.id for r in existing}
+            merged = [r for r in existing if r.id not in {v.id for v in verified}]
+            merged.extend(r for r in verified if r.id not in seen)
+            for r in verified:
+                print(f"  + {r.id} now in {item}.yml ({r.author})")
+            write_book(item, merged)
+        else:
+            for r in verified:
+                print(f"  candidate {r.id}: {r.description} (use --write to add)")
+        return 0
+
+    print("Unknown ruleset action.", file=sys.stderr)
+    return 2
 
 
 if __name__ == "__main__":

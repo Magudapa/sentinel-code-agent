@@ -1,0 +1,162 @@
+# Sentinel rule book — python
+# The submission gate: rules are added here ONLY after the AI
+# cross-verification passes (sentinel ruleset generate/verify).
+# Every rule credits its author in `author`. ai_verified: true is set
+# only by the verifier — never by hand.
+meta:
+  language: python
+  generated_by: sentinel ruleset
+rules:
+  - id: PY-001
+    language: python
+    description: Cleartext HTTP request
+    severity: medium
+    category: transport
+    regex: 'requests\.(get|post|put|patch|delete|head|options)\(\s*["'']http://'
+    message: Outbound request goes over plaintext HTTP.
+    fix: "Use HTTPS ('https://') or an encrypted tunnel so credentials/payloads are not readable on the wire."
+    author: Magudapa
+    source: manual
+    ai_verified: false
+    vulnerable_example: "requests.post('http://api.example.com/login', data=creds)"
+    safe_example: "requests.post('https://api.example.com/login', data=creds)"
+
+  - id: PY-002
+    language: python
+    description: DES/3DES/RC4 weak cipher
+    severity: high
+    category: crypto
+    regex: '\b(DES|DES3|ARC4|RC4|Blowfish)\.new\('
+    message: Legacy cipher used for encryption.
+    fix: "Use AES-256 in GCM mode (cryptography lib). DES/3DES/RC4 are cryptographically broken."
+    author: Magudapa
+    source: manual
+    ai_verified: false
+    vulnerable_example: "cipher = DES3.new(key, DES3.MODE_CBC)"
+    safe_example: "cipher = AES.new(key, AES.MODE_GCM)"
+
+  - id: PY-003
+    language: python
+    description: random module used for a security token
+    severity: high
+    category: crypto
+    regex: '(password|token|secret|key)\s*=\s*.*\brandom\.(random|randint|choice|uniform)'
+    message: A security token generated with the non-cryptographic random module.
+    fix: "Use `secrets.token_urlsafe(32)` (CSPRNG). random is predictable and guessable."
+    author: Magudapa
+    source: manual
+    ai_verified: false
+    vulnerable_example: "password = ''.join(random.choices(alphabet, k=16))"
+    safe_example: "password = secrets.token_urlsafe(16)"
+
+  - id: PY-004
+    language: python
+    description: SQL string built inside execute
+    severity: critical
+    category: injection
+    regex: '(execute|executemany)\(\s*[fF]["'']|cursor\.execute\([^)]*(SELECT|INSERT|UPDATE|DELETE).{0,80}(\{|\.format\(|\+)'
+    message: SQL statement is assembled with string interpolation.
+    fix: "Use parameterised queries: cursor.execute('SELECT * FROM t WHERE id = %s', (uid,))."
+    author: Magudapa
+    source: manual
+    ai_verified: false
+    vulnerable_example: "cursor.execute(f'SELECT * FROM users WHERE id = {uid}')"
+    safe_example: "cursor.execute('SELECT * FROM users WHERE id = %s', (uid,))"
+
+  - id: PY-005
+    language: python
+    description: subprocess built from an f-string
+    severity: high
+    category: injection
+    regex: 'subprocess\.(run|call|check_call|check_output|Popen)\(f["'']'
+    message: Command line is built with an interpolated string.
+    fix: "Pass a list of args to subprocess (shell=False): subprocess.run(['git', 'status'])."
+    author: Magudapa
+    source: manual
+    ai_verified: false
+    vulnerable_example: "out = subprocess.run(f'git log {branch}', shell=True)"
+    safe_example: "out = subprocess.run(['git', 'log', branch])"
+
+  - id: PY-006
+    language: python
+    description: assert used as input validation
+    severity: low
+    category: best-practice
+    regex: '^\s*assert\s'
+    message: assert for runtime validation disappears with python -O.
+    fix: "Raise an explicit exception (ValueError) instead of assert for input checks."
+    author: Magudapa
+    source: manual
+    ai_verified: false
+    vulnerable_example: "assert user_id and len(user_id) == 7"
+    safe_example: "if not user_id or len(user_id) != 7: raise ValueError('bad id')"
+
+  - id: PY-007
+    language: python
+    description: Insecure tempfile.mktemp
+    severity: medium
+    category: filesystem
+    regex: '\btempfile\.mktemp\s*\('
+    message: mktemp is racy and unsafe.
+    fix: "Use tempfile.TemporaryFile() or mkstemp() with os.fdopen (unique, opened O_EXCL)."
+    author: Magudapa
+    source: manual
+    ai_verified: false
+    vulnerable_example: "path = tempfile.mktemp(suffix='.dat')"
+    safe_example: "with tempfile.TemporaryFile() as fh: pass"
+
+  - id: PY-008
+    language: python
+    description: xml.etree parsing (XXE risk)
+    severity: medium
+    category: injection
+    regex: '\bxml\.(etree\.|dom\.)'
+    message: ElementTree does not guard against XXE by default.
+    fix: "Use `defusedxml.ElementTree` (or defusedxml.sax/minidom) for any untrusted XML."
+    author: Magudapa
+    source: manual
+    ai_verified: false
+    vulnerable_example: "root = xml.etree.ElementTree.parse('upload.xml')"
+    safe_example: "from defusedxml import ElementTree; root = ElementTree.parse('upload.xml')"
+
+  - id: PY-009
+    language: python
+    description: urlopen without a timeout
+    severity: medium
+    category: availability
+    regex: 'urllib\.request\.urlopen\s*\((?!.*\btimeout\b)(?!.*,\s*\d+)'
+    message: Network call can block the process forever.
+    fix: "Always pass a timeout: urllib.request.urlopen(url, timeout=10)."
+    author: Magudapa
+    source: manual
+    ai_verified: false
+    vulnerable_example: "data = urllib.request.urlopen(req).read()"
+    safe_example: "data = urllib.request.urlopen(req, timeout=10).read()"
+
+  - id: PY-010
+    language: python
+    description: input() used in library/automation code
+    severity: low
+    category: availability
+    regex: '\binput\(\s*["'']'
+    message: Interactive input() blocks automation and CI runs.
+    fix: "Read parameters from argv, env vars, or a config file - never stdin prompts."
+    author: Magudapa
+    source: manual
+    ai_verified: false
+    vulnerable_example: "mode = input('choose mode: ')"
+    safe_example: "mode = os.environ.get('MODE', 'default')"
+
+  - id: PY-011
+    language: python
+    description: fixed synchronous sleep in a hot path
+    severity: info
+    category: best-practice
+    regex: '^\s*time\.sleep\s*\(\s*(0\.00[1-9]|[0-9])'
+    message: time.sleep in a request/worker path adds fixed latency.
+    fix: "Use retry-with-backoff libraries or asyncio.sleep instead of fixed sleeps."
+    author: Magudapa
+    source: manual
+    ai_verified: false
+    vulnerable_example: "time.sleep(0.5)"
+    safe_example: "await asyncio.sleep(0.5)"

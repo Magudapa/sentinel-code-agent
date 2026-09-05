@@ -71,5 +71,8 @@ testpaths = ["tests"]
 skips = ["B404", "B603", "B607", "B112", "B110", "B107"]
 exclude_dirs = ["tests", ".venv", "build", "dist", "tests/fixtures"]
 
-[tool.setuptools]
-packages = ["sentinel"]
+[tool.setuptools.packages.find]
+include = ["sentinel*"]
+
+[tool.setuptools.package-data]
+"sentinel.rules" = ["books/*.yml"]
