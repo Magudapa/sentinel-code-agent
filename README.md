@@ -23,6 +23,10 @@ Sentinel combines three things no single tool offers for free:
 2. **Local LLM explanation** (Ollama default) — *why* it's dangerous, *how* it could be exploited.
 3. **Validated auto-fix** — a patch that passes syntax checks, analyzer re-runs, and your tests before it's proposed.
 
+It also ships **open, AI-verified rule books** (`sentinel/rules/books/*.yml`): every rule credits its
+author and becomes `ai_verified` only after an empirical match-test **and** an independent AI
+cross-review — the seed of a community rule marketplace.
+
 ## Quick start
 
 ```bash
@@ -53,6 +57,8 @@ Output: human Markdown, JSON, and standard **SARIF** (works with GitHub code sca
 - ✅ Auto-fix: generates validated patches and opens a PR (human always approves)
 - ✅ Codebase memory: Chroma vector store reminds you where you fixed the same thing before
 - ✅ **MCP server** — Claude, Langflow, or any MCP client can call `review_pr` / `review_diff`
+- ✅ **REST API** — `sentinel serve` exposes `/api/v1/health`, `/api/v1/review`, `/api/v1/rulesets` (FastAPI, localhost-first)
+- ✅ **AI-verified rule books** — open, authored, two-gate (empirical + independent AI) rule system, `sentinel ruleset list|verify|generate`
 - ✅ SARIF export for GitHub code scanning integration
 
 ## Architecture
@@ -104,6 +110,8 @@ Status of the BRD → production milestones:
 | M10 | Tests (42 passing) + docs + lint/bandit green | ✅ |
 | M11 | Docker image + GitHub Action + `sentinel watch` CI | 🔜 |
 | M12 | PyPI release | 🔜 |
+| M13 | AI-verified rule books (Python/JS/SQL) + `sentinel ruleset` | ✅ |
+| M14 | Phase-0 REST API (`sentinel serve`, FastAPI) + strategy docs | ✅ |
 
 ## Contributing
 
