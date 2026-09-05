@@ -1,0 +1,75 @@
+[build-system]
+requires = ["setuptools>=68"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "sentinel-code-agent"
+version = "0.1.0"
+description = "Autonomous security & code review agent. Free, local-first, with MCP support."
+readme = "README.md"
+requires-python = ">=3.10"
+license = { text = "MIT" }
+authors = [{ name = "Magudapa" }]
+keywords = ["code-review", "security", "llm", "agent", "git", "mcp"]
+classifiers = [
+    "Development Status :: 3 - Alpha",
+    "Intended Audience :: Developers",
+    "License :: OSI Approved :: MIT License",
+    "Programming Language :: Python :: 3",
+    "Topic :: Software Development :: Quality Assurance",
+]
+dependencies = [
+    "bandit>=1.7.5",
+    "ruff>=0.4.0",
+    "requests>=2.31.0",
+    "PyYAML>=6.0",
+]
+
+
+[project.optional-dependencies]
+github = ["PyGithub>=2.0.0"]
+gitlab = ["python-gitlab>=4.0.0"]
+memory = ["chromadb>=0.4.0"]
+mcp = ["mcp>=1.0.0"]
+all = [
+    "PyGithub>=2.0.0",
+    "python-gitlab>=4.0.0",
+    "chromadb>=0.4.0",
+    "mcp>=1.0.0",
+]
+dev = [
+    "pytest>=7.0",
+    "pytest-cov>=4.0",
+]
+
+
+[project.scripts]
+sentinel = "sentinel.cli:main"
+sentinel-mcp = "sentinel.mcp_server:main"
+
+[tool.ruff]
+line-length = 110
+exclude = ["tests/fixtures", ".venv", "build", "dist"]
+lint.ignore = [
+    "BLE001",  # resilient scanning tool intentionally swallows per-plugin errors
+    "E501",
+]
+
+[tool.ruff.lint.per-file-ignores]
+"tests/*" = ["E501"]
+"sentinel/*" = [
+    "S112",  # resilient scanner: intentionally continues past per-source errors
+    "S110",
+]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+
+[tool.bandit]
+# Sentinel spawns analyzers (bandit/ruff/pytest) intentionally and is a
+# resilient scanner, so these rules are acknowledged rather than hidden naively.
+skips = ["B404", "B603", "B607", "B112", "B110", "B107"]
+exclude_dirs = ["tests", ".venv", "build", "dist", "tests/fixtures"]
+
+[tool.setuptools]
+packages = ["sentinel"]

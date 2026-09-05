@@ -1,0 +1,20 @@
+# Sentinel
+.DS_Store
+__pycache__/
+*.py[cod]
+*.egg-info/
+.venv/
+venv/
+dist/
+build/
+.pytest_cache/
+.ruff_cache/
+.mypy_cache/
+.coverage
+htmlcov/
+*.duckdb
+*.sqlite
+.sentinel-memory/
+sentinel-fixes/
+sentinel-sample-report.md
+.sentinel.yml
