@@ -75,7 +75,8 @@ def audit_repo_tool(path: str, explain: bool = True) -> str:
                 continue
             for fn in files:
                 if fn.endswith(".py"):
-                    findings += analyze_files(root, [os.path.join(root, fn)])
+                    joined = os.path.join(root, fn)
+                    findings += analyze_files(path, [os.path.relpath(joined, path)])
         report = ReviewReport(provider="local", repo=os.path.basename(path.rstrip("/\\")),
                               target=path, findings=findings)
         return format_json_object(report.to_dict())
