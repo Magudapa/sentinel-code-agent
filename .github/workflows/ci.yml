@@ -17,3 +17,4 @@ jobs:
       - run: pytest -q
       - run: ruff check .
       - run: bandit -q -r sentinel -x sentinel/tests -c pyproject.toml
+      - run: sentinel benchmark

@@ -61,5 +61,16 @@ scope for safety. Parked items reference the roadmap/BRD where applicable.
 16. Docker sandbox for autofix (Phase 5), auth token for `serve` multi-user, per-file
     verdicts, SBOM + signed releases, `rules verify` corpus at integration scale.
 
+## Audit status
+
+17. The trust/evidence pass fully reviewed the core path (`pipeline`, `trust`, analyzers,
+    `autofix`, `model`, `api/server`, `mcp_server`, `cli`, `config`, `rules/{defs,verify}`).
+    The following modules have **not yet had an independent hardening audit** in that
+    pass — they are exercised by tests but flagged for follow-up:
+    `providers/github.py`, `providers/gitlab.py`, `rules/{loader,detector,generate}.py`,
+    `api/_models.py`, `memory.py`, `webapp.py`.
+18. The GitHub Actions self-review workflow reports with `|| true` and uploads artifacts;
+    it does not gate CI on findings (deliberate — the report is evidence, not a merge block).
+
 Everything above is recorded as `INCOMPLETE` (with the reason) whenever it would
 otherwise mask a claim — Sentinel prefers an honest downgrade over a quiet PASS.

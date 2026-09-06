@@ -34,10 +34,10 @@ def test_api_key_kv_masked():
 
 
 def test_mongo_uri_creds_masked():
-    uri = "mongodb://magudapathi:magu1234@cluster0.mongodb.net/db"
+    uri = "mongodb://demo_user:demo_pass1@cluster0.mongodb.net/db"
     out = mask_uri(uri)
-    assert "magu1234" not in out
-    assert "magudapathi" not in out
+    assert "demo_pass1" not in out
+    assert "demo_user" not in out
     assert "cluster0.mongodb.net" in out
 
 
