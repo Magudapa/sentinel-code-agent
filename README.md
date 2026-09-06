@@ -1,4 +1,4 @@
-# Sentinel 🛡️
+﻿# Sentinel ðŸ›¡ï¸
 
 ### AI can suggest. Evidence decides.
 
@@ -7,7 +7,7 @@ Sentinel is an open-source, local-first security and code-review agent for repos
 It detects security issues, explains them using AI, proposes fixes, validates those fixes, and produces evidence-backed results.
 
 ```text
-DETECT → EXPLAIN → FIX → VERIFY → SHIP
+DETECT â†’ EXPLAIN â†’ FIX â†’ VERIFY â†’ SHIP
 ```
 
 ### The difference
@@ -53,15 +53,15 @@ Sentinel approaches the problem as an evidence pipeline:
 
 ```text
 Repository / PR
-       ↓
+       â†“
     DETECT
-       ↓
+       â†“
     EXPLAIN
-       ↓
+       â†“
       FIX
-       ↓
+       â†“
     VERIFY
-       ↓
+       â†“
      SHIP
 ```
 
@@ -76,7 +76,7 @@ Verification can include:
 * rule verification
 * patch validation
 
-The final verdict is produced by the evidence engine — not by the LLM.
+The final verdict is produced by the evidence engine â€” not by the LLM.
 
 ## Local-first AI
 
@@ -102,10 +102,10 @@ Analyzer availability is explicit.
 For example:
 
 ```text
-✓ Bandit
-✓ Ruff
-✓ Sentinel Rules
-✗ Semgrep
+âœ“ Bandit
+âœ“ Ruff
+âœ“ Sentinel Rules
+âœ— Semgrep
 
 Result:
 INCOMPLETE
@@ -274,13 +274,13 @@ Output: human Markdown, JSON, and standard **SARIF** (works with GitHub code sca
 
 ## Docs
 
-- [SENTINEL_TRUST_INVARIANTS.md](SENTINEL_TRUST_INVARIANTS.md) — the evidence/verdict contract, test-enforced
-- [SENTINEL_SECURITY_MODEL.md](SENTINEL_SECURITY_MODEL.md) — security & trust model, implemented controls
-- [KNOWN_LIMITATIONS.md](KNOWN_LIMITATIONS.md) — honest inventory of what Sentinel does not do (yet)
-- [SENTINEL_API_SPEC.md](SENTINEL_API_SPEC.md) — REST API spec (`sentinel serve`, FastAPI, localhost-first)
-- [SENTINEL_THREAT_MODEL.md](SENTINEL_THREAT_MODEL.md) — threat model and our core guard
-- [BRD.md](BRD.md) — design decisions & full backlog
-- [ARCHITECTURE.md](ARCHITECTURE.md) — architecture (informed by 20+ leading open-source AI repos)
+- [SENTINEL_TRUST_INVARIANTS.md](SENTINEL_TRUST_INVARIANTS.md) â€” the evidence/verdict contract, test-enforced
+- [SENTINEL_SECURITY_MODEL.md](SENTINEL_SECURITY_MODEL.md) â€” security & trust model, implemented controls
+- [KNOWN_LIMITATIONS.md](KNOWN_LIMITATIONS.md) â€” honest inventory of what Sentinel does not do (yet)
+- [SENTINEL_API_SPEC.md](SENTINEL_API_SPEC.md) â€” REST API spec (`sentinel serve`, FastAPI, localhost-first)
+- [SENTINEL_THREAT_MODEL.md](SENTINEL_THREAT_MODEL.md) â€” threat model and our core guard
+- [BRD.md](BRD.md) â€” design decisions & full backlog
+- [ARCHITECTURE.md](ARCHITECTURE.md) â€” architecture (informed by 20+ leading open-source AI repos)
 
 ## Development
 
@@ -294,25 +294,25 @@ sentinel benchmark   # regression corpus: precision/recall gates
 
 ## Roadmap
 
-Status of the BRD → production milestones:
+Status of the BRD â†’ production milestones:
 
 | # | Milestone | Status |
 |---|---|---|
-| M1 | BRD | ✅ |
-| M2 | Scaffold (LICENSE, CI, packaging) | ✅ |
-| M3 | Providers (GitHub/GitLab/local) + analyzers (custom rules, Bandit, Ruff) | ✅ |
-| M4 | Local-first model layer (Ollama + OpenAI-compatible) | ✅ |
-| M5 | Reviewer pipeline + CLI (markdown/JSON/SARIF) | ✅ |
-| M6 | Auto-fix (validated patches, export + GitHub fix PR) | ✅ |
-| M7 | Codebase memory (fixed-before recall) | ✅ |
-| M8 | MCP server (`sentinel-mcp`) | ✅ |
-| M9 | Streamlit web UI (`streamlit run webapp.py`) | ✅ |
-| M10 | Tests + docs + lint/bandit green | ✅ |
-| M11 | Docker image + GitHub Action + `sentinel watch` CI | 🔜 |
-| M12 | PyPI release | 🔜 |
-| M13 | AI-verified rule books (Python/JS/SQL) + `sentinel ruleset` | ✅ |
-| M14 | Phase-0 REST API (`sentinel serve`, FastAPI) + strategy docs | ✅ |
-| M15 | Trust verdict (`VERIFIED`/`INCOMPLETE`/`FAILED`) + security modules + benchmark | ✅ |
+| M1 | BRD | âœ… |
+| M2 | Scaffold (LICENSE, CI, packaging) | âœ… |
+| M3 | Providers (GitHub/GitLab/local) + analyzers (custom rules, Bandit, Ruff) | âœ… |
+| M4 | Local-first model layer (Ollama + OpenAI-compatible) | âœ… |
+| M5 | Reviewer pipeline + CLI (markdown/JSON/SARIF) | âœ… |
+| M6 | Auto-fix (validated patches, export + GitHub fix PR) | âœ… |
+| M7 | Codebase memory (fixed-before recall) | âœ… |
+| M8 | MCP server (`sentinel-mcp`) | âœ… |
+| M9 | Streamlit web UI (`streamlit run webapp.py`) | âœ… |
+| M10 | Tests + docs + lint/bandit green | âœ… |
+| M11 | Docker image + GitHub Action + `sentinel watch` CI | ðŸ”œ |
+| M12 | PyPI release | ðŸ”œ |
+| M13 | AI-verified rule books (Python/JS/SQL) + `sentinel ruleset` | âœ… |
+| M14 | Phase-0 REST API (`sentinel serve`, FastAPI) + strategy docs | âœ… |
+| M15 | Trust verdict (`VERIFIED`/`INCOMPLETE`/`FAILED`) + security modules + benchmark | âœ… |
 
 ## Contributing
 

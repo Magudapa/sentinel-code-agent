@@ -16,7 +16,7 @@ from pathlib import Path
 from .analyzers import analyze_changesets_full
 from .diffparse import Changeset, DiffLine
 
-SECURITY_CASES_DIR = Path(__file__).resolve().parent.parent / "tests" / "security_cases"
+SECURITY_CASES_DIR = Path(__file__).resolve().parent / "security_cases"
 
 
 def _load_cases() -> dict[str, dict]:

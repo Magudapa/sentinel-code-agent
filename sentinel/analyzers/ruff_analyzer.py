@@ -51,17 +51,22 @@ class RuffAnalyzer(FileAnalyzer):
             return findings
 
         for issue in issues:
-            code = issue.get("code", "RUFF")
-            findings.append(
-                Finding(
-                    rule_id=f"RUFF-{code}",
-                    severity=severity_from_str(_sev(code)),
-                    file=issue.get("filename", ""),
-                    line=int(issue.get("location", {}).get("row", 0) or 0),
-                    code_snippet=issue.get("fix", {}).get("applier_available", False) and "" or "",
-                    description=issue.get("message", ""),
-                    evidence=code,
-                    suggested_fix="Auto-fixable with `ruff check --fix`. Review then commit.",
+            try:
+                if not isinstance(issue, dict):
+                    continue
+                code = issue.get("code") or "RUFF"
+                findings.append(
+                    Finding(
+                        rule_id=f"RUFF-{code}",
+                        severity=severity_from_str(_sev(code)),
+                        file=issue.get("filename", ""),
+                        line=int(issue.get("location", {}).get("row", 0) or 0),
+                        code_snippet="",
+                        description=issue.get("message", ""),
+                        evidence=code,
+                        suggested_fix="Auto-fixable with `ruff check --fix`. Review then commit.",
+                    )
                 )
-            )
+            except Exception:
+                continue
         return findings

@@ -58,6 +58,16 @@ dev = [
 sentinel = "sentinel.cli:main"
 sentinel-mcp = "sentinel.mcp_server:main"
 
+[tool.setuptools]
+include-package-data = true
+
+[tool.setuptools.packages.find]
+include = ["sentinel*"]
+
+[tool.setuptools.package-data]
+"sentinel.rules" = ["books/*.yml"]
+sentinel = ["security_cases/**/*.yml"]
+
 [tool.ruff]
 line-length = 110
 exclude = ["tests/fixtures", ".venv", "build", "dist"]
@@ -81,9 +91,3 @@ testpaths = ["tests"]
 # resilient scanner, so these rules are acknowledged rather than hidden naively.
 skips = ["B404", "B603", "B607", "B112", "B110", "B107"]
 exclude_dirs = ["tests", ".venv", "build", "dist", "tests/fixtures"]
-
-[tool.setuptools.packages.find]
-include = ["sentinel*"]
-
-[tool.setuptools.package-data]
-"sentinel.rules" = ["books/*.yml"]
