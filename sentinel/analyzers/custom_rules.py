@@ -13,6 +13,8 @@ These rules catch the classic dangerous patterns that always matter:
 from __future__ import annotations
 
 import re
+from pathlib import Path
+from typing import ClassVar
 
 from ..diffparse import Changeset
 from ..models import Finding, Severity
@@ -72,7 +74,7 @@ RULES: list[Rule] = [
     ),
     Rule(
         "S005", "Unsafe eval/exec of runtime input", Severity.CRITICAL,
-        re.compile(r"(?i)\b(eval|exec|compile)\s*\("),
+        re.compile(r"(?i)\b(?:eval|exec)\s*\("),
         "Executing dynamic strings can run arbitrary code. Prefer safe parsers (`ast.literal_eval`, JSON, "
         "or a parser library). Never pass untrusted input to eval/exec.",
     ),
@@ -170,8 +172,15 @@ class SentinelRulesAnalyzer(ContentAnalyzer):
 
     name = "sentinel-rules"
 
+    _CODE_EXTENSIONS: ClassVar[set[str]] = {
+        ".py", ".js", ".ts", ".jsx", ".tsx", ".rb", ".go", ".rs",
+        ".java", ".php", ".sh", ".sql", ".scala", ".kt", ".swift",
+    }
+
     def analyze(self, changeset: Changeset) -> list[Finding]:
         findings: list[Finding] = []
+        if Path(changeset.file).suffix.lower() not in self._CODE_EXTENSIONS:
+            return findings
         for line in changeset.additions:
             if line.kind != "add":
                 continue
