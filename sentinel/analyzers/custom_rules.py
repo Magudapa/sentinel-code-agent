@@ -13,6 +13,8 @@ These rules catch the classic dangerous patterns that always matter:
 from __future__ import annotations
 
 import re
+from pathlib import Path
+from typing import ClassVar
 
 from ..diffparse import Changeset
 from ..models import Finding, Severity
@@ -50,7 +52,7 @@ RULES: list[Rule] = [
     ),
     _build_secret_rule(
         "S002", "AWS / cloud access key",
-        r"(AKIA[0-9A-Z]{16}|ghp_[A-Za-z0-9]{36}|sk-[A-Za-z0-9]{20,}|xox[baprs]-[A-Za-z0-9-]{10,}|AIza[0-9A-Za-z_\-]{35})",
+        r"(AKIA[0-9A-Z]{16}|ghp_[A-Za-z0-9]{36}|sk-[0-9A-Za-z_\-]{20,}|xox[baprs]-[A-Za-z0-9-]{10,}|AIza[0-9A-Za-z_\-]{25,})",
         "This looks like a real credential for AWS/GitHub/OpenAI/Slack/GCP. Revoke it immediately if it was "
         "ever committed and remove it from history ({`git filter-repo`}).",
     ),
@@ -64,15 +66,17 @@ RULES: list[Rule] = [
         "S004", "SQL injection (string interpolation)", Severity.CRITICAL,
         re.compile(
             r"(?i)f['\"][^'\"]*(SELECT|INSERT|UPDATE|DELETE|DROP)[^'\"]*\{"
-            r"|(SELECT|INSERT|UPDATE|DELETE|DROP).{0,120}(%|format\(|\{[a-z0-9_]+\})"
             r"|\.execute\(\s*f['\"]"
+            r"|(SELECT|INSERT|UPDATE|DELETE|DROP).{0,120}\.format\("
+            r"|['\"](SELECT|INSERT|UPDATE|DELETE|DROP)[^'\"]*['\"]\s*\+\s*[a-zA-Z0-9_.\[]"
+            r"|\+\s*['\"](SELECT|INSERT|UPDATE|DELETE|DROP)"
         ),
         "User-controlled input is interpolated into a SQL string, enabling injection. Use parameterised "
         "queries: `cursor.execute('SELECT * FROM t WHERE id = %s', (user_id,))`.",
     ),
     Rule(
         "S005", "Unsafe eval/exec of runtime input", Severity.CRITICAL,
-        re.compile(r"(?i)\b(eval|exec|compile)\s*\("),
+        re.compile(r"(?i)\b(?:eval|exec)\s*\("),
         "Executing dynamic strings can run arbitrary code. Prefer safe parsers (`ast.literal_eval`, JSON, "
         "or a parser library). Never pass untrusted input to eval/exec.",
     ),
@@ -170,8 +174,15 @@ class SentinelRulesAnalyzer(ContentAnalyzer):
 
     name = "sentinel-rules"
 
+    _CODE_EXTENSIONS: ClassVar[set[str]] = {
+        ".py", ".js", ".ts", ".jsx", ".tsx", ".rb", ".go", ".rs",
+        ".java", ".php", ".sh", ".sql", ".scala", ".kt", ".swift",
+    }
+
     def analyze(self, changeset: Changeset) -> list[Finding]:
         findings: list[Finding] = []
+        if Path(changeset.file).suffix.lower() not in self._CODE_EXTENSIONS:
+            return findings
         for line in changeset.additions:
             if line.kind != "add":
                 continue

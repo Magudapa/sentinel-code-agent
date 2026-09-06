@@ -47,14 +47,16 @@ class HealthResponse(BaseModel):
     model: dict[str, Any]
 
 
-def _status_for(report: Any, model_ok: bool, explain: bool) -> tuple[str, int, str]:
-    counts = report.counts
-    blocking = counts.get("critical", 0)
-    if blocking:
-        return "FAILED", blocking, "FAILED"
-    if explain and not model_ok:
-        return "INCOMPLETE", 0, "PASSED"
-    return "VERIFIED", 0, "PASSED"
+def _status_for(report: Any) -> tuple[str, int, str]:
+    """Surface the deterministic trust-layer verdict + policy.
+
+    Never fabricates VERIFIED: the report verdict is produced by
+    ``trust.report_verdict`` from the analyzer status map (a check only counts
+    if it actually ran and passed).  ``policy`` mirrors ``status`` (kept for
+    backward-compat with the original response shape — both derive from the
+    same source of truth now).
+    """
+    return report.verdict, 0, report.verdict
 
 
 def create_app(config_path: str = "", workspace_root: str | None = None) -> FastAPI:
@@ -122,7 +124,6 @@ def create_app(config_path: str = "", workspace_root: str | None = None) -> Fast
 
     @app.post("/api/v1/review")
     def review(body: ReviewRequest) -> dict:
-        from ..model import ModelClient
         from ..pipeline import run_review
         from ..providers import get_provider
 
@@ -166,12 +167,11 @@ def create_app(config_path: str = "", workspace_root: str | None = None) -> Fast
                 "message": "No diff to review — nothing changed.",
             }
 
-        model_ok = ModelClient(config.model).is_available()
         report = run_review(
             provider, context, config=config, explain=body.explain,
             working_dir=str(root) if body.provider == "local" else "",
         )
-        status, blocking, policy = _status_for(report, model_ok, body.explain)
+        status, _blocking, policy = _status_for(report)
         return {
             "status": status,
             "trust_score": report.verdict_score,
@@ -179,10 +179,13 @@ def create_app(config_path: str = "", workspace_root: str | None = None) -> Fast
             "provider": report.provider,
             "target": report.target,
             "counts": report.counts,
-            "blocking_findings": blocking,
+            "blocking_findings": report.counts.get("critical", 0),
             "policy": policy,
             "findings": [f.to_dict() for f in report.findings],
             "created_at": report.created_at,
+            "verdict_reason": report.verdict_reason,
+            "analyzers": report.analyzer_status,
+            "verification": report.verification,
         }
 
     return app

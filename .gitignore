@@ -1,5 +1,6 @@
 # Sentinel
 .DS_Store
+graphify-out/
 __pycache__/
 *.py[cod]
 *.egg-info/

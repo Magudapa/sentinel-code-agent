@@ -46,6 +46,11 @@ class Finding:
     suggested_fix: str = ""
     fix_difficulty: str = "easy"
     memory_hint: str = ""
+    # trust layer
+    analyzer: str = ""
+    verdict: str = "INCOMPLETE"          # one of trust.Verdict
+    verdict_reason: str = ""
+    evidence_items: list = field(default_factory=list)  # list[EvidenceItem]
 
     @property
     def severity_name(self) -> str:
@@ -65,10 +70,16 @@ class Finding:
             "fix_difficulty": self.fix_difficulty,
             "memory_hint": self.memory_hint,
             "code_snippet": self.code_snippet,
+            "analyzer": self.analyzer,
+            "verdict": self.verdict,
+            "verdict_reason": self.verdict_reason,
+            "evidence_items": [e.to_dict() for e in self.evidence_items],
         }
 
     @classmethod
     def from_dict(cls, data: dict) -> "Finding":
+        from .trust import EvidenceItem
+
         return cls(
             rule_id=data.get("rule_id", "unknown"),
             severity=severity_from_str(data.get("severity", "low")),
@@ -82,6 +93,10 @@ class Finding:
             suggested_fix=data.get("suggested_fix", ""),
             fix_difficulty=data.get("fix_difficulty", "easy"),
             memory_hint=data.get("memory_hint", ""),
+            analyzer=data.get("analyzer", ""),
+            verdict=data.get("verdict", "INCOMPLETE"),
+            verdict_reason=data.get("verdict_reason", ""),
+            evidence_items=[EvidenceItem.from_dict(e) for e in data.get("evidence_items", [])],
         )
 
 
@@ -118,6 +133,14 @@ class ReviewReport:
     findings: list[Finding] = field(default_factory=list)
     patches: list[Patch] = field(default_factory=list)
     created_at: str = ""
+    # trust layer
+    schema_version: str = "1.1"
+    sentinel_version: str = ""
+    verdict: str = "INCOMPLETE"
+    verdict_reason: str = ""
+    analyzer_status: dict = field(default_factory=dict)
+    verification: dict = field(default_factory=dict)
+    review_id: str = ""
 
     @property
     def counts(self) -> dict:
@@ -137,6 +160,13 @@ class ReviewReport:
             "findings": [f.to_dict() for f in self.findings],
             "patches": [p.to_dict() for p in self.patches],
             "created_at": self.created_at,
+            "schema_version": self.schema_version,
+            "sentinel_version": self.sentinel_version,
+            "status": self.verdict,
+            "verdict_reason": self.verdict_reason,
+            "analyzers": self.analyzer_status,
+            "verification": self.verification,
+            "review_id": self.review_id,
         }
 
     @classmethod
@@ -153,6 +183,13 @@ class ReviewReport:
                 for p in data.get("patches", [])
             ],
             created_at=data.get("created_at", ""),
+            schema_version=data.get("schema_version", "1.1"),
+            sentinel_version=data.get("sentinel_version", ""),
+            verdict=data.get("status") or data.get("verdict", "INCOMPLETE"),
+            verdict_reason=data.get("verdict_reason", ""),
+            analyzer_status=data.get("analyzers", {}),
+            verification=data.get("verification", {}),
+            review_id=data.get("review_id", ""),
         )
 
 

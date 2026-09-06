@@ -31,6 +31,7 @@ def format_markdown(report: ReviewReport) -> str:
         f"## 🛡️ Sentinel Review — {report.repo}",
         "",
         f"**Target:** {report.target}  **Verdict score:** {score}/100 ({_verdict_label(score)})",
+        f"**Verification:** {report.verdict} — {report.verdict_reason}",
         "",
         "| Severity | Count |",
         "|---|---|",
@@ -42,6 +43,12 @@ def format_markdown(report: ReviewReport) -> str:
             lines.append(f"| {SEVERITY_EMOJI[sev]} {sev} | {n} |")
     lines.append("")
 
+    if report.analyzer_status:
+        lines.append("### Analyzer status")
+        for name, info in report.analyzer_status.items():
+            lines.append(f"- `{name}`: **{info.get('status', '?')}** — {info.get('detail', '')}")
+        lines.append("")
+
     if not report.findings:
         lines.append("**No issues found. Nice work!** 🎉")
         return "\n".join(lines)
@@ -51,8 +58,9 @@ def format_markdown(report: ReviewReport) -> str:
         report.findings, key=lambda f: (f.severity_name, f.file, f.line), reverse=True
     )
     for i, f in enumerate(sorted_findings, 1):
-        lines.append(f"{i}. **[`{f.rule_id}`]** {SEVERITY_EMOJI[f.severity_name]} {f.description}")
-        lines.append(f"   - **Location:** `{f.file}:{f.line}`")
+        marker = {"VERIFIED": "✅", "INCOMPLETE": "⚠️", "FAILED": "❌", "NOT_APPLICABLE": "➖", "SKIPPED": "➖"}.get(f.verdict, "❓")
+        lines.append(f"{i}. **[`{f.rule_id}`]** {SEVERITY_EMOJI[f.severity_name]} {f.description} {marker}")
+        lines.append(f"   - **Location:** `{f.file}:{f.line}`  **Verdict:** {f.verdict} ({f.verdict_reason})")
         if f.code_snippet:
             lines.append(f"   - ```python\n     {f.code_snippet}\n     ```")
         if f.model_explanation:
@@ -73,7 +81,9 @@ def format_markdown(report: ReviewReport) -> str:
 
 
 def format_json(report: ReviewReport) -> str:
-    return json.dumps(report.to_dict(), indent=2)
+    from .redact import redact
+
+    return redact(json.dumps(report.to_dict(), indent=2))
 
 
 def format_sarif(report: ReviewReport) -> str:
@@ -118,7 +128,9 @@ def format_sarif(report: ReviewReport) -> str:
             "results": results,
         }],
     }
-    return json.dumps(sarif, indent=2)
+    from .redact import redact
+
+    return redact(json.dumps(sarif, indent=2))
 
 
 def _sarif_level(sev: str) -> str:

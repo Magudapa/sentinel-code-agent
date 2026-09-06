@@ -48,11 +48,11 @@ def review_pr_tool(repo: str, pr: int, token: str = "", explain: bool = True) ->
     """Review a GitHub PR. ``GITHUB_TOKEN`` env or ``token`` used for private repos."""
     from .providers.github import GitHubProvider
 
-    provider = GitHubProvider(token=token)
+    provider = GitHubProvider(token=token or None)
     context = provider.fetch_context(repo, pr)
     reviewer = Reviewer(load_config())
     report = reviewer.review(provider, context, explain=explain)
-    return format_json_object(report.to_dict())
+    return _redact_json(report.to_dict())
 
 
 def audit_repo_tool(path: str, explain: bool = True) -> str:
@@ -90,6 +90,12 @@ def format_json_object(obj) -> str:
     import json
 
     return json.dumps(obj, indent=2, default=str)
+
+
+def _redact_json(obj) -> str:
+    from .redact import redact
+
+    return redact(format_json_object(obj))
 
 
 def main() -> None:

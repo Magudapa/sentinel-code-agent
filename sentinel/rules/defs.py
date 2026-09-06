@@ -33,12 +33,20 @@ class RuleDefinition:
     verification_notes: str = ""  # what the AI reviewer decided/flagged
     vulnerable_example: str = ""  # snippet that MUST match (empirical gate)
     safe_example: str = ""        # snippet that MUST NOT match (empirical gate)
+    version: int = 1              # rule semantic version (bumps with each edit)
+    lifecycle: str = "active"     # active | deprecated | retired
+    deprecation_note: str = ""    # why retired/deprecated (if any)
+    last_modified: str = ""       # ISO timestamp of last edit
 
     def __post_init__(self) -> None:
         if self.severity not in VALID_SEVERITIES:
             raise ValueError(f"Invalid severity {self.severity!r} for rule {self.id}")
         if not self.regex:
             raise ValueError(f"Rule {self.id} has no regex pattern")
+        if self.version < 1:
+            raise ValueError(f"Rule {self.id} has invalid version {self.version}")
+        if self.lifecycle not in ("active", "deprecated", "retired"):
+            raise ValueError(f"Rule {self.id} has invalid lifecycle {self.lifecycle!r}")
 
     def as_dict(self) -> dict:
         return {
@@ -58,6 +66,10 @@ class RuleDefinition:
             "verification_notes": self.verification_notes,
             "vulnerable_example": self.vulnerable_example,
             "safe_example": self.safe_example,
+            "version": self.version,
+            "lifecycle": self.lifecycle,
+            "deprecation_note": self.deprecation_note,
+            "last_modified": self.last_modified,
         }
 
     @classmethod
@@ -79,12 +91,16 @@ class RuleDefinition:
             verification_notes=str(d.get("verification_notes", "")),
             vulnerable_example=str(d.get("vulnerable_example", "")),
             safe_example=str(d.get("safe_example", "")),
+            version=int(d.get("version", 1) or 1),
+            lifecycle=str(d.get("lifecycle", "active")),
+            deprecation_note=str(d.get("deprecation_note", "")),
+            last_modified=str(d.get("last_modified", "")),
         )
 
     @property
     def verified(self) -> bool:
         """A rule counts as verified only through the AI gate."""
-        return self.ai_verified
+        return self.ai_verified and self.lifecycle == "active"
 
 
 def dedupe_rules(rules: list[RuleDefinition]) -> list[RuleDefinition]:
