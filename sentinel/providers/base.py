@@ -6,6 +6,10 @@ from abc import ABC, abstractmethod
 from dataclasses import dataclass, field
 
 
+class ProviderError(RuntimeError):
+    """A clean, user-facing provider failure (auth, permissions, not found, rate limit)."""
+
+
 @dataclass
 class ProviderContext:
     """Info describing what is being reviewed."""
@@ -16,6 +20,7 @@ class ProviderContext:
     diff: str = ""
     base_sha: str = ""
     head_sha: str = ""
+    base_ref: str = ""  # target branch name for the change (PR base), never a SHA
     title: str = ""
     description: str = ""
     files: dict = field(default_factory=dict)

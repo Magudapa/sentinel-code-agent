@@ -139,8 +139,15 @@ def main(argv: list[str] | None = None) -> int:
         return 0
 
     reviewer = Reviewer(config)
-    report = reviewer.review(provider, context, explain=not args.no_explain,
-                             working_dir=args.working_dir or (args.path if args.provider == "local" and not args.range else ""))
+    try:
+        report = reviewer.review(provider, context, explain=not args.no_explain,
+                                 working_dir=args.working_dir or (args.path if args.provider == "local" and not args.range else ""))
+    except ValueError as e:
+        print(f"ERROR: {e}", file=sys.stderr)
+        return 1
+    except Exception as e:
+        print(f"ERROR: review failed: {type(e).__name__}: {e}", file=sys.stderr)
+        return 1
 
     formatter = {"markdown": format_markdown, "json": format_json, "sarif": format_sarif}[args.format]
     out = formatter(report)
@@ -195,11 +202,20 @@ def _cmd_fix(args, config: SentinelConfig) -> int:
         return 1
 
     reviewer = Reviewer(config)
-    report = reviewer.review(provider, context, explain=True,
-                             working_dir=args.workspace)
+    try:
+        report = reviewer.review(provider, context, explain=True,
+                                 working_dir=args.workspace)
+    except ValueError as e:
+        print(f"ERROR: {e}", file=sys.stderr)
+        return 1
+    except Exception as e:
+        print(f"ERROR: review failed: {type(e).__name__}: {e}", file=sys.stderr)
+        return 1
 
     model = ModelClient(config.model)
-    patches = autofix_candidates(model, report.findings, workspace_root=args.workspace or None)
+    allow_tests = tuple((config.resources or {}).get("allowed_test_dirs", []) or [])
+    patches = autofix_candidates(model, report.findings, workspace_root=args.workspace or None,
+                                 allow_test_dirs=allow_tests)
 
     if not patches:
         print("No auto-fix candidates (no findings at/above the fix threshold, or no LLM available).")

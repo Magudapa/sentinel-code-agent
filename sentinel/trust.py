@@ -31,11 +31,12 @@ from enum import Enum
 
 
 class EvidenceStatus(str, Enum):
-    PASS = "PASS"
+    PASS = "PASS"  # nosec B105 - enum literal used for report serialization, not a credential
     FINDINGS = "FINDINGS"            # executed cleanly and found issues (evidence, not a pass)
     FAIL = "FAIL"
     ERROR = "ERROR"
     TIMEOUT = "TIMEOUT"
+    MALFORMED_OUTPUT = "MALFORMED_OUTPUT"  # analyzer ran but produced unparseable output (never a pass)
     NOT_INSTALLED = "NOT_INSTALLED"
     NOT_SUPPORTED = "NOT_SUPPORTED"  # not applicable in this environment (e.g. no working tree)
     SKIPPED = "SKIPPED"
@@ -52,6 +53,7 @@ class EvidenceStatus(str, Enum):
         return self in (
             EvidenceStatus.ERROR,
             EvidenceStatus.TIMEOUT,
+            EvidenceStatus.MALFORMED_OUTPUT,
             EvidenceStatus.NOT_INSTALLED,
             EvidenceStatus.MISSING,
             EvidenceStatus.SKIPPED,
@@ -191,7 +193,7 @@ def report_verdict(
         f"{name} {info.get('status')}: {info.get('detail', '')}"
         for name, info in status_map.items()
         if applicable(name, info.get("status", ""))
-        and info.get("status") in ("ERROR", "TIMEOUT")
+        and info.get("status") in ("ERROR", "TIMEOUT", "MALFORMED_OUTPUT")
     ]
     if crashed:
         return Verdict.INCOMPLETE.value, " | ".join(crashed)

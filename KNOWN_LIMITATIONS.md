@@ -68,7 +68,7 @@ scope for safety. Parked items reference the roadmap/BRD where applicable.
     The following modules have **not yet had an independent hardening audit** in that
     pass â€” they are exercised by tests but flagged for follow-up:
     `providers/github.py`, `providers/gitlab.py`, `rules/{loader,detector,generate}.py`,
-    `api/_models.py`, `memory.py`, `webapp.py`.
+    `api/_models.py`, `memory/store.py`.
 18. The GitHub Actions self-review workflow reports with `|| true` and uploads artifacts;
     it does not gate CI on findings (deliberate â€” the report is evidence, not a merge block).
 

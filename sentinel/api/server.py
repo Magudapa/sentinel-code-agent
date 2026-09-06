@@ -10,6 +10,7 @@ from __future__ import annotations
 
 import base64
 import os
+from dataclasses import field
 from pathlib import Path
 from typing import Any
 
@@ -18,6 +19,8 @@ from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
 
 from ..config import SentinelConfig, load_config
+from ..diffparse import DiffTooLargeError
+from ..providers import ProviderError
 from ..rules import available_books, known_languages, load_book
 from ..rules.verify import verify_rule
 from ._models import RuleVerifyRequest
@@ -45,6 +48,7 @@ class HealthResponse(BaseModel):
     ok: bool = True
     version: str = VERSION
     model: dict[str, Any]
+    security: dict[str, Any] = field(default_factory=dict)
 
 
 def _status_for(report: Any) -> tuple[str, int, str]:
@@ -78,11 +82,19 @@ def create_app(config_path: str = "", workspace_root: str | None = None) -> Fast
         from ..model import ModelClient
 
         model = ModelClient(config.model)
-        return HealthResponse(model={
-            "provider": config.model.provider,
-            "model": config.model.model,
-            "available": model.is_available(),
-        })
+        return HealthResponse(
+            model={
+                "provider": config.model.provider,
+                "model": config.model.model,
+                "available": model.is_available(),
+            },
+            security={
+                "auth": "none",
+                "note": "No authentication — this server is for localhost use only; "
+                        "do not expose it on a network.",
+                "workspace_root": str(root),
+            },
+        )
 
     @app.get("/api/v1/rulesets")
     def rulesets(language: str = "") -> dict:
@@ -143,15 +155,21 @@ def create_app(config_path: str = "", workspace_root: str | None = None) -> Fast
                     raise HTTPException(400, "path is outside the configured workspace root")
                 diff_text = ""
                 if body.diff:
+                    if len(body.diff) > int(8 * 1024 * 1024 * 1.34):
+                        raise HTTPException(413, "diff request body is too large")
                     try:
                         diff_text = base64.b64decode(body.diff).decode("utf-8", "replace")
                     except Exception:
                         diff_text = body.diff
                 context = provider.fetch_context(str(target), commit_range=body.range, diff=diff_text)
+        except DiffTooLargeError as e:
+            raise HTTPException(413, str(e)) from e
         except HTTPException:
             raise
+        except ProviderError as e:
+            raise HTTPException(400, str(e)) from e
         except Exception as e:
-            raise HTTPException(500, str(e))
+            raise HTTPException(500, f"{type(e).__name__}: {e}")
 
         if not context.diff.strip():
             return {
@@ -167,10 +185,15 @@ def create_app(config_path: str = "", workspace_root: str | None = None) -> Fast
                 "message": "No diff to review — nothing changed.",
             }
 
-        report = run_review(
-            provider, context, config=config, explain=body.explain,
-            working_dir=str(root) if body.provider == "local" else "",
-        )
+        try:
+            report = run_review(
+                provider, context, config=config, explain=body.explain,
+                working_dir=str(root) if body.provider == "local" else "",
+            )
+        except DiffTooLargeError as e:
+            raise HTTPException(413, str(e)) from e
+        except ValueError as e:
+            raise HTTPException(400, f"{type(e).__name__}: {e}") from e
         status, _blocking, policy = _status_for(report)
         return {
             "status": status,

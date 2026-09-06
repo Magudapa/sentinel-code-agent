@@ -1,0 +1,15 @@
+# Category: XSS (DOM sink usage). Covered by the S016 content rule.
+# shellcheck-ish: each S016 case keeps 1.00/1.00; FPs avoided with textContent/createElement.
+
+cases:
+  - rule_id: S016
+    category: XSS
+    vulnerable:
+      - "document.getElementById('out').innerHTML = user_input"
+      - "el.innerHTML = sanitized_html"
+      - "document.write('<b>Hi ' + name + '</b>')"
+      - "div.outerHTML = row_payload"
+    safe:
+      - "out.textContent = user_input"
+      - "node = document.createElement('span'); node.textContent = value"
+      - "el.setAttribute('textContent', value)"

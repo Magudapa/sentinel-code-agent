@@ -5,8 +5,6 @@ from __future__ import annotations
 import os
 from dataclasses import dataclass, field
 
-import yaml
-
 DEFAULT_MODEL = "qwen2.5-coder:3b"
 
 
@@ -84,12 +82,17 @@ def validate_config(cfg: SentinelConfig) -> SentinelConfig:
         raise ConfigError("resources.required_analyzers must be a list of analyzer names")
     if "max_explanations" in res and (not isinstance(res["max_explanations"], int) or res["max_explanations"] < 0):
         raise ConfigError("resources.max_explanations must be a non-negative integer")
+    adt = res.get("allowed_test_dirs")
+    if adt is not None and (not isinstance(adt, list) or not all(isinstance(p, str) for p in adt)):
+        raise ConfigError("resources.allowed_test_dirs must be a list of directory paths")
     return cfg
 
 
 def _load_yaml(path: str) -> dict:
+    from .yamlsafe import load_yaml_strict
+
     with open(path, encoding="utf-8") as fh:
-        data = yaml.safe_load(fh) or {}
+        data = load_yaml_strict(fh.read()) or {}
     return data
 
 

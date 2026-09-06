@@ -1,48 +1,120 @@
 cases:
   - rule_id: S001
+    category: Secrets
     vulnerable:
       - "password = 'hunter2secretvalue'"
       - "api_key = 'AKIAIOSFODNN7EXAMPLE'"
       - "secret = 'abcdefghijklmnopqrstuvwxyz123456'"
+      - "secret = 'wJalrXUtnFEMI/K7MDENG/bPxRfiCYEXAMPLEKEY'"
     safe:
       - "password = os.environ['DB_PASSWORD']"
       - "api_key = os.getenv('API_KEY', '')"
       - "secret = keyring.get_password('svc', 'user')"
+      - "aws_secret = botocore.session.get_session().get_credentials().secret_key"
   - rule_id: S002
+    category: Secrets
     vulnerable:
       - "ghp_0123456789abcdefghijklmnopqrstuvwxyz"
       - "sk-proj-0123456789abcdef0123456789abcdef"
       - "AIzaSyD-Pm0f1vFBJu1vTdqB-0123456789abcdef"
     safe:
       - "token = os.environ['GITHUB_TOKEN']"
+      - "cred = getattr(settings, 'AWS_ACCESS_KEY_ID', '')"
+  - rule_id: S003
+    category: Secrets
+    vulnerable:
+      - "-----BEGIN RSA PRIVATE KEY-----"
+      - "jwt = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJzdWIiOiIxMjM0NTY3ODkwIn0.SflKxwRJSMeKKF2QT4fwpMeJf36POk6yJV_adQssw5c'"
+      - "-----BEGIN OPENSSH PRIVATE KEY-----"
+    safe:
+      - "PRIVATE_KEY = os.environ['PRIVATE_KEY']"
+      - "key = loaded_from_aws_sm(name)"
   - rule_id: S004
+    category: SQL injection
     vulnerable:
       - "cur.execute(f'SELECT * FROM users WHERE id = {user_id}')"
       - "query = 'DELETE FROM t WHERE id = ' + user_input"
+      - "sql = 'UPDATE accounts SET name = {}'.format(request.form['name'])"
     safe:
       - "cur.execute('SELECT * FROM users WHERE id = ?', (user_id,))"
       - "query = 'SELECT id FROM t WHERE name = %s' % (name,)"
+      - "sql = 'UPDATE accounts SET name = %s' % (escaped_name,)"
   - rule_id: S005
+    category: Command injection
     vulnerable:
       - "result = eval(user_payload)"
       - "exec(code_string)"
+      - "eval(request.GET['code'])"
     safe:
       - "result = ast.literal_eval(payload)"
       - "pattern = re.compile(r'\\d+')"
   - rule_id: S006
+    category: Command injection
     vulnerable:
       - "subprocess.run(cmd_string, shell=True)"
       - "subprocess.Popen('ls -la', shell=True)"
+      - "subprocess.call(f'rm -rf {target}', shell=True)"
     safe:
       - "subprocess.run(cmd_string.split(), shell=False)"
       - "subprocess.run(['ls', '-la'])"
+      - "subprocess.call(['rm', '-rf', target])"
   - rule_id: S007
+    category: Command injection
     vulnerable:
       - "os.system('shutdown now')"
       - "os.popen('cat /etc/passwd')"
+      - "os.system('curl ' + url)"
     safe:
       - "subprocess.run(['shutdown'], check=True)"
+  - rule_id: S008
+    category: Deserialization
+    vulnerable:
+      - "obj = pickle.loads(incoming)"
+    safe:
+      - "obj = json.loads(incoming)"
+  - rule_id: S009
+    category: Deserialization
+    vulnerable:
+      - "cfg = yaml.load(data)"
+    safe:
+      - "cfg = yaml.safe_load(data)"
+  - rule_id: S010
+    category: Cryptography
+    vulnerable:
+      - "digest = hashlib.md5(password.encode()).hexdigest()"
+      - "check = hashlib.sha1(request.data).digest()"
+    safe:
+      - "digest = hashlib.sha256(password.encode()).hexdigest()"
+  - rule_id: S011
+    category: Cryptography
+    vulnerable:
+      - "encrypt(key='0123456789abcdef', iv='12345678')"
+    safe:
+      - "key = bytes(os.urandom(32))"
+  - rule_id: S012
+    category: Configuration
+    vulnerable:
+      - "debug = True"
+      - "app.run(debug=True)"
+    safe:
+      - "debug = os.environ.get('DEBUG', '') == '1'"
+  - rule_id: S013
+    category: Network security
+    vulnerable:
+      - "host = '0.0.0.0'"
+      - "server.address = '0.0.0.0'"
+    safe:
+      - "host = '127.0.0.1'"
+  - rule_id: S015
+    category: Network security
+    vulnerable:
+      - "requests.get(url, verify=False)"
+      - "ssl_context.check_hostname = False"
+      - "ssl_context.verify_mode = ssl.CERT_NONE"
+    safe:
+      - "requests.get(url, verify=True)"
   - rule_id: AST-001
+    category: Command injection
     vulnerable:
       - "result = eval(user_input)"
       - "code = compile(payload, '<string>', 'exec')"
@@ -50,16 +122,19 @@ cases:
       - "result = ast.literal_eval(user_input)"
       - "pattern = re.compile(r'\\d+')"
   - rule_id: AST-003
+    category: Command injection
     vulnerable:
       - "subprocess.run(cmd_string, shell=True)"
     safe:
       - "subprocess.run(cmd_string.split(), shell=False)"
   - rule_id: AST-004
+    category: Deserialization
     vulnerable:
       - "obj = pickle.loads(incoming)"
     safe:
       - "obj = json.loads(incoming)"
   - rule_id: AST-007
+    category: Configuration
     vulnerable:
       - "try:\n    parse(data)\nexcept:\n    pass"
     safe:

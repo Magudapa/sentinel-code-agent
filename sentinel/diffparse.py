@@ -5,6 +5,20 @@ from __future__ import annotations
 import re
 from dataclasses import dataclass, field
 
+# -- resource limits --------------------------------------------------------
+# A hostile/accidental gigabyte diff must fail loudly (never OOM) and a path
+# in a diff header can never escape the workspace (git paths never contain
+# '..' segments or drive prefixes, so any such path is untrusted input).
+MAX_DIFF_BYTES = 8 * 1024 * 1024       # 8 MiB of raw diff text
+MAX_DIFF_LINES = 300_000               # ~300k lines of patch
+MAX_LINE_LEN = 64_000                  # a single pathological line
+_TRAVERSAL_SEG = re.compile(r"(^|/)(\.\.)(/|$)")
+_ABS_PATH = re.compile(r"^([a-zA-Z]:[/\\]|/)")
+
+
+class DiffTooLargeError(ValueError):
+    """The input diff exceeds Sentinel's resource limits."""
+
 
 @dataclass
 class DiffLine:
@@ -54,20 +68,55 @@ _FILE_HEADER = re.compile(
 )
 
 
+def _safe_diff_path(path: str) -> str | None:
+    """Normalize a ``b/`` path from a diff header, rejecting escapes.
+
+    Git file paths are relative and free of ``..`` segments; any path that
+    looks absolute, drive-qualified, or containing a ``..`` segment is not a
+    legitimate repository path and is skipped (it must never reach a join with
+    the working directory or an analyzer argument).
+    """
+    norm = path.replace("\\", "/")
+    if _ABS_PATH.match(norm):
+        return None
+    if _TRAVERSAL_SEG.search(norm):
+        return None
+    return re.sub(r"/+", "/", norm)
+
+
 def parse_diff(raw: str) -> dict[str, Changeset]:
-    """Parse a unified diff string into {file: Changeset}."""
+    """Parse a unified diff string into {file: Changeset}.
+
+    Raises ``DiffTooLargeError`` when the input exceeds the resource limits so
+    callers can fail gracefully instead of hanging or exhausting memory.
+    """
+    if len(raw) > MAX_DIFF_BYTES:
+        raise DiffTooLargeError(
+            f"diff exceeds {MAX_DIFF_BYTES // (1024 * 1024)} MiB limit "
+            f"({len(raw)} bytes)"
+        )
     changesets: dict[str, Changeset] = {}
     current_file: str | None = None
     cur_new: int | None = None
     cur_old: int | None = None
     expect_pair = False
+    line_count = 0
 
     for raw_line in raw.splitlines():
+        line_count += 1
+        if line_count > MAX_DIFF_LINES:
+            raise DiffTooLargeError(f"diff exceeds {MAX_DIFF_LINES} lines limit")
+        if len(raw_line) > MAX_LINE_LEN:
+            raise DiffTooLargeError(
+                f"diff contains a line longer than {MAX_LINE_LEN} characters"
+            )
         if raw_line.startswith("diff --git "):
             m = _FILE_HEADER.match(raw_line)
             if m:
-                current_file = re.sub(r"/+", "/", m.group(2).replace("\\", "/"))
-                changesets[current_file] = Changeset(file=current_file)
+                safe = _safe_diff_path(m.group(2))
+                current_file = safe
+                if safe is not None:
+                    changesets[safe] = Changeset(file=safe)
             else:
                 current_file = None
             continue

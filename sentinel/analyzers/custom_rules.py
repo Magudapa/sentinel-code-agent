@@ -20,6 +20,11 @@ from ..diffparse import Changeset
 from ..models import Finding, Severity
 from .base import ContentAnalyzer, register_content
 
+#: Lines longer than this are truncated before rule matching. Bounds
+#: catastrophic-backtracking work per line (the per-analyzer CPU budget in
+#: ``analyzers.base`` is the outer defense).
+MAX_SCAN_LINE = 8000
+
 
 class Rule:
     def __init__(self, rule_id: str, name: str, severity: Severity, pattern: re.Pattern, advice: str, language: str = "*"):
@@ -131,8 +136,14 @@ RULES: list[Rule] = [
     ),
     Rule(
         "S015", "Insecure `requests.verify=False` / TLS off", Severity.HIGH,
-        re.compile(r"(?i)(verify\s*=\s*False|ssl_context.*(check_hostname=False|verify_mode.*CERT_NONE))"),
+        re.compile(r"(?i)(verify\s*=\s*False|ssl_context.*(check_hostname\s*=\s*False|verify_mode.*CERT_NONE))"),
         "Disabling TLS verification allows man-in-the-middle interception. Keep verification on.",
+    ),
+    Rule(
+        "S016", "DOM XSS via innerHTML/outerHTML or document.write", Severity.HIGH,
+        re.compile(r"(?i)(\.innerHTML\s*=|\.outerHTML\s*=|document\.write\s*\()"),
+        "Assigning untrusted data into innerHTML/outerHTML or document.write executes "
+        "markup. Build DOM nodes with createElement/textContent instead.",
     ),
     Rule(
         "B001", "TODO/FIXME left in code", Severity.LOW,
@@ -186,7 +197,7 @@ class SentinelRulesAnalyzer(ContentAnalyzer):
         for line in changeset.additions:
             if line.kind != "add":
                 continue
-            text = line.text.rstrip()
+            text = line.text.rstrip()[:MAX_SCAN_LINE]
             if not text.strip() or text.strip().startswith("#") and not any(
                 r.pattern.search(text) for r in RULES
             ):

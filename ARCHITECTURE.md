@@ -21,7 +21,7 @@ something a solo developer can self-host with zero cost.
 ```
 sentinel/
 ├── cli.py            # `sentinel review` / `sentinel fix`
-├── webapp.py         # Streamlit UI (in repo root)
+├── api/server.py     # Phase-0 REST API (`sentinel serve`, FastAPI)
 ├── config.py         # .sentinel.yml loader (model, thresholds, auto_fix, memory)
 ├── models.py         # Finding / ReviewReport / Patch / severity + scoring
 ├── providers/        # diff + metadata sources

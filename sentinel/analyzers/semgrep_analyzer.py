@@ -11,16 +11,16 @@ from __future__ import annotations
 
 import json
 import shutil
-import subprocess
 
 from ..models import Finding, severity_from_str
-from .base import FileAnalyzer, register_file
+from ..process import run_safe
+from .base import FileAnalyzer, MalformedAnalyzerOutput, register_file
 
 
 @register_file
 class SemgrepAnalyzer(FileAnalyzer):
     name = "semgrep"
-    version = "1.0"
+    version = "1.1"
     supported_languages: tuple[str, ...] = ("python", "javascript", "typescript", "yaml")
 
     def available(self) -> tuple[bool, str]:
@@ -34,18 +34,29 @@ class SemgrepAnalyzer(FileAnalyzer):
         if not files:
             return []
         try:
-            res = subprocess.run(
+            res = run_safe(
                 ["semgrep", "scan", "--json", "--quiet", "--no-rewrite-rule-ids", *files],
-                cwd=path, capture_output=True, text=True, check=False,
-                timeout=timeout, env=env,
+                cwd=path, timeout=timeout, extra_env=env or None, max_output=20_000_000,
             )
+            if res.timed_out:
+                raise TimeoutError(f"semgrep exceeded {timeout}s") from None
+            if res.error:
+                if "program not found" in res.error:
+                    raise FileNotFoundError("semgrep binary not found on PATH")
+                raise RuntimeError(res.error)
+        except (FileNotFoundError, RuntimeError, TimeoutError):
+            raise
+        except Exception as exc:
+            raise RuntimeError(f"semgrep failed to run: {type(exc).__name__}: {exc}") from exc
+
+        try:
             data = json.loads(res.stdout or "{}")
-        except FileNotFoundError:
-            return []
-        except subprocess.TimeoutExpired:
-            raise TimeoutError(f"semgrep exceeded {timeout}s") from None
-        except (json.JSONDecodeError, TypeError, ValueError):
-            return []
+        except (json.JSONDecodeError, TypeError, ValueError) as exc:
+            raise MalformedAnalyzerOutput(
+                f"unparseable semgrep JSON output: {type(exc).__name__}"
+            ) from exc
+        if not isinstance(data, dict) or not isinstance(data.get("results"), list):
+            raise MalformedAnalyzerOutput("semgrep report missing 'results' array")
 
         findings: list[Finding] = []
         for result in data.get("results", []):

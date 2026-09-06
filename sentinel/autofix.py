@@ -27,11 +27,12 @@ from pathlib import Path
 from .diffparse import Changeset, DiffLine
 from .model import ModelClient
 from .models import Finding, Patch, Severity
-from .pathsec import PathEscapeError, ensure_within, is_sensitive_relpath
+from .pathsec import PathEscapeError, ensure_within, is_sensitive_relpath, is_within
 from .process import run_safe
 
 _CODE_EXTENSIONS = (".py", ".js", ".ts", ".tsx", ".mjs", ".cjs")
 _SENSITIVE_EXTENSIONS = (".pem", ".p12", ".pfx", ".env")
+_FILE_ANALYZER_REGRESSION_TIMEOUT = 60
 
 
 def _python_syntax_ok(code: str) -> tuple[bool, str]:
@@ -90,37 +91,91 @@ def _resolve_target(workspace_root: str, rel: str) -> tuple[Path | None, str | N
     return resolved, None
 
 
-def _security_regression(finding: Finding, new_text: str) -> bool:
+def _security_regression(finding: Finding, new_text: str, workspace_root: str | None = None) -> tuple[bool, str]:
     """Gate 5: the finding's own rule must not reproduce on patched text.
 
     Deterministic. Uses the in-process content analyzer that produced the
     finding (by name) against a Changeset built from the new file text.
-    Returns True when the rule no longer reproduces.
+    Returns (True, "") when the rule no longer reproduces.
+
+    For file analyzers (bandit/ruff/semgrep) the patched file is re-scanned
+    against the working tree. When that cannot be proven (no workspace, binary
+    unavailable, analyzer error) the gate FAILS CLOSED — the finding then can
+    never validate without deterministic evidence.
     """
     if not finding.analyzer:
-        return True  # cannot attribute -> best-effort; callers gate on rule_id
+        return True, "analyzer unknown — best-effort"
+
     from .analyzers.base import CONTENT_ANALYZERS, FILE_ANALYZERS
-    from .analyzers.base import ContentAnalyzer as _CA
 
     cls = CONTENT_ANALYZERS.get(finding.analyzer) or FILE_ANALYZERS.get(finding.analyzer)
-    if cls is None or not issubclass(cls, _CA):
-        return True  # file analyzers need a full tree; regulated separately
+    if cls is None:
+        return True, "analyzer not registered — best-effort"
 
-    changeset = Changeset(
-        file=finding.file,
-        additions=[DiffLine(kind="add", text=ln, new_line=i + 1, old_line=None)
-                   for i, ln in enumerate(new_text.splitlines())],
-    )
+    content_cls = CONTENT_ANALYZERS.get(finding.analyzer)
+    if content_cls is not None:
+        changeset = Changeset(
+            file=finding.file,
+            additions=[DiffLine(kind="add", text=ln, new_line=i + 1, old_line=None)
+                       for i, ln in enumerate(new_text.splitlines())],
+        )
+        try:
+            reproduced = [f for f in content_cls().analyze(changeset) if f.rule_id == finding.rule_id]
+            if reproduced:
+                return False, f"security regression: {finding.rule_id} still reproduces on patched text"
+            return True, ""
+        except Exception:
+            return False, f"cannot re-run {finding.analyzer} on patched text (error)"
+
+    # --- file analyzer (bandit / ruff / semgrep) ---------------------
+    if not workspace_root:
+        return False, "cannot prove file-analyzer finding is fixed without a workspace"
+
+    if not is_within(workspace_root, finding.file):
+        return False, f"target escapes workspace: {finding.file!r}"
+
+    from .analyzers.base import analyze_files_full
+
     try:
-        reproduced = [f for f in cls().analyze(changeset) if f.rule_id == finding.rule_id]
-        return not reproduced
+        findings, status_map = analyze_files_full(
+            workspace_root, [finding.file.replace("\\", "/")],
+            timeout=_FILE_ANALYZER_REGRESSION_TIMEOUT,
+        )
     except Exception:
-        return False  # cannot prove the fix kills the finding
+        return False, f"cannot re-run {finding.analyzer} on patched file (error)"
+
+    info = status_map.get(finding.analyzer) or {}
+    status = info.get("status", "")
+    if status not in ("PASS", "FINDINGS"):
+        return False, f"cannot re-run {finding.analyzer} ({status}: {info.get('detail', '')})"
+
+    reproduced = [f for f in findings
+                  if f.rule_id == finding.rule_id and f.file.replace("\\", "/") == finding.file.replace("\\", "/")]
+    if reproduced:
+        return False, f"security regression: {finding.rule_id} still reproduces on patched file"
+    return True, ""
 
 
-def _run_fast_tests(workdir: str, timeout: int = 60) -> bool | None:
-    """Run pytest quietly if a test suite is small; True/False/None."""
-    res = run_safe(["pytest", "-q", "--no-header", "-x"], cwd=workdir, timeout=timeout)
+def _run_fast_tests(workdir: str, allow_test_dirs: tuple[str, ...] = ()) -> bool | None:
+    """Optionally run a small test suite — ONLY inside an explicit sandbox allowlist.
+
+    Sentinel must never execute a repository's own test code against an
+    untrusted checkout without a controlled sandbox. ``allow_test_dirs`` lists
+    directories (via config ``resources.allowed_test_dirs``) whose tests may be
+    executed; anything else returns None (recorded as "tests not run").
+    """
+    if not allow_test_dirs:
+        return None
+    resolved = Path(workdir).resolve()
+    allowed = {Path(d).resolve() for d in allow_test_dirs}
+    if not any(a == resolved or a in resolved.parents for a in allowed):
+        return None
+    import sys
+
+    res = run_safe(
+        [sys.executable, "-m", "pytest", "-q", "--no-header", "-x"],
+        cwd=workdir, timeout=60,
+    )
     if res.timed_out:
         return None
     if res.error:
@@ -131,7 +186,8 @@ def _run_fast_tests(workdir: str, timeout: int = 60) -> bool | None:
 
 
 def apply_fix(model: ModelClient, finding: Finding, path: str | None = None,
-              workspace_root: str | None = None) -> Patch | None:
+              workspace_root: str | None = None,
+              allow_test_dirs: tuple[str, ...] = ()) -> Patch | None:
     """Apply an LLM-suggested fix. Returns a validated Patch or None.
 
     ``path`` must point at a real file containing the finding's code snippet;
@@ -183,23 +239,28 @@ def apply_fix(model: ModelClient, finding: Finding, path: str | None = None,
         patch.validation_notes = note
         return patch
 
-    # gate 5: security regression on the patched file text
-    if not _security_regression(finding, updated):
+    # gate 5: security regression on the patched file text (fail-closed)
+    cleared, regression_note = _security_regression(finding, updated, workspace_root)
+    if not cleared:
+        patch.diff = build_patch_file(current, updated, finding.file)
         patch.validated = False
-        patch.validation_notes = f"security regression: {finding.rule_id} still reproduces on patched text"
+        patch.validation_notes = regression_note
         return patch
 
     patch.diff = build_patch_file(current, updated, finding.file)
     patch.validated = True
     patch.validation_notes = "syntax OK + security regression cleared"
     if workspace_root:
-        patch.tests_passed = _run_fast_tests(workspace_root)
+        patch.tests_passed = _run_fast_tests(workspace_root, allow_test_dirs)
+        if patch.tests_passed is None:
+            patch.validation_notes += " (tests not run: repo test execution requires an allowlisted sandbox)"
     return patch
 
 
 def autofix_candidates(model: ModelClient, findings: list[Finding],
                        max_severity: Severity = Severity.HIGH, limit: int = 10,
-                       workspace_root: str | None = None) -> list[Patch]:
+                       workspace_root: str | None = None,
+                       allow_test_dirs: tuple[str, ...] = ()) -> list[Patch]:
     """Generate fix candidates for findings at/above max_severity."""
     patches = []
     for finding in findings:
@@ -216,7 +277,8 @@ def autofix_candidates(model: ModelClient, findings: list[Finding],
                 if not target.exists():
                     continue  # nothing on disk to patch
                 path = str(target)
-            p = apply_fix(model, finding, path, workspace_root=workspace_root)
+            p = apply_fix(model, finding, path, workspace_root=workspace_root,
+                          allow_test_dirs=allow_test_dirs)
         except Exception:
             continue
         if p:

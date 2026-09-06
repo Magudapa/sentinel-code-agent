@@ -4,16 +4,16 @@ from __future__ import annotations
 
 import json
 import shutil
-import subprocess
 
 from ..models import Finding, severity_from_str
-from .base import FileAnalyzer, register_file
+from ..process import run_safe
+from .base import FileAnalyzer, MalformedAnalyzerOutput, register_file
 
 
 @register_file
 class RuffAnalyzer(FileAnalyzer):
     name = "ruff"
-    version = "1.1"
+    version = "1.2"
     supported_languages: tuple[str, ...] = ("python",)
 
     def available(self) -> tuple[bool, str]:
@@ -27,17 +27,26 @@ class RuffAnalyzer(FileAnalyzer):
         if not files:
             return []
         try:
-            res = subprocess.run(
+            res = run_safe(
                 ["ruff", "check", "--output-format", "json", "--quiet", "--no-cache"] + files,
-                cwd=path, capture_output=True, text=True, check=False,
-                timeout=timeout, env=env,
+                cwd=path, timeout=timeout, extra_env=env or None,
             )
+            if res.timed_out:
+                raise TimeoutError(f"ruff exceeded {timeout}s") from None
+            if res.error:
+                if "program not found" in res.error:
+                    raise FileNotFoundError("ruff binary not found on PATH")
+                raise RuntimeError(res.error)
             if not res.stdout.strip():
+                if res.returncode != 0:
+                    raise MalformedAnalyzerOutput(
+                        f"ruff exited {res.returncode} with no JSON output: {res.stderr[:200]}"
+                    )
                 return []
-        except FileNotFoundError:
-            return []
-        except subprocess.TimeoutExpired:
-            raise TimeoutError(f"ruff exceeded {timeout}s") from None
+        except (FileNotFoundError, RuntimeError, TimeoutError, MalformedAnalyzerOutput):
+            raise
+        except Exception as exc:
+            raise RuntimeError(f"ruff failed to run: {type(exc).__name__}: {exc}") from exc
 
         def _sev(code: str):
             if code.startswith(("E9", "F")):  # logic errors / pyflakes
@@ -47,8 +56,12 @@ class RuffAnalyzer(FileAnalyzer):
         findings: list[Finding] = []
         try:
             issues = json.loads(res.stdout)
-        except Exception:
-            return findings
+        except Exception as exc:
+            raise MalformedAnalyzerOutput(
+                f"unparseable ruff JSON output: {type(exc).__name__}"
+            ) from exc
+        if not isinstance(issues, list):
+            raise MalformedAnalyzerOutput("ruff JSON output is not a list")
 
         for issue in issues:
             try:

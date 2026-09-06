@@ -4,7 +4,21 @@ from __future__ import annotations
 
 import os
 
-from .base import BaseProvider, ProviderContext, register
+from .base import BaseProvider, ProviderContext, ProviderError, register
+
+
+def _http_error(url: str, exc: Exception) -> ProviderError:
+    status = getattr(exc, "response", None)
+    code = status.status_code if status is not None else None
+    hint = {
+        401: "authentication failed (bad or missing token).",
+        403: "permission denied (token lacks access to this project, or rate limit).",
+        404: "not found (project/MR does not exist, or token cannot see it).",
+        429: "rate limited by GitLab — retry later.",
+    }.get(code)
+    if hint:
+        return ProviderError(f"GitLab API {code} on {url}: {hint}")
+    return ProviderError(f"GitLab API error on {url}: {type(exc).__name__}: {exc}")
 
 
 @register
@@ -21,9 +35,14 @@ class GitLabProvider(BaseProvider):
         headers = {}
         if self.token:
             headers["PRIVATE-TOKEN"] = self.token
-        r = requests.get(f"{self.base_url}{url}", headers=headers, timeout=30)
-        r.raise_for_status()
-        return r.json()
+        try:
+            r = requests.get(f"{self.base_url}{url}", headers=headers, timeout=30)
+            r.raise_for_status()
+            return r.json()
+        except requests.HTTPError as exc:
+            raise _http_error(url, exc) from exc
+        except requests.RequestException as exc:
+            raise ProviderError(f"GitLab network error on {url}: {type(exc).__name__}") from exc
 
     def fetch_context(self, repo: str, mr: int) -> ProviderContext:
         # repo as "group/project" (URL-encoded for GitLab)

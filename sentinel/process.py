@@ -23,6 +23,7 @@ import os
 import shlex
 import subprocess
 from dataclasses import dataclass
+from pathlib import Path
 
 DEFAULT_TIMEOUT = 120
 MAX_OUTPUT = 1_000_000  # 1MB per stream
@@ -56,10 +57,40 @@ ENV_ALLOWLIST = (
     "PYTHONPATH",
     "PYTHONUTF8",
     "PYTHONIOENCODING",
+    "PYTHONUSERBASE",
     "VIRTUAL_ENV",
     "PIP_*",
     "OLLAMA_*",
+    # Site/sysconfig + config discovery on Windows: packages installed for the
+    # user live under %APPDATA%\Python and many tools read %LOCALAPPDATA% for
+    # settings. These are dev-environment paths, not secrets.
+    "APPDATA",
+    "LOCALAPPDATA",
+    "PROGRAMDATA",
+    "PROGRAMFILES",
+    "PROGRAMFILES(X86)",
+    "USERPROFILE",
 )
+
+
+def _user_site_pythonpath() -> list[str]:
+    """Directories a child using the same interpreter needs on PYTHONPATH.
+
+    The per-user site-packages (Windows: %APPDATA%\\Python\\Python313\\site-packages)
+    are normally re-derived by the child from its own env — but ``run_safe``
+    strips that env, and tools like pytest/git live there. We compute it from
+    *this* interpreter instead of guessing from environment variables.
+    """
+    try:
+        import site
+
+        user_site = site.getusersitepackages()
+    except Exception:  # pragma: no cover - defensive
+        return []
+    if not user_site:
+        return []
+    p = Path(user_site)
+    return [str(p)] if p.is_dir() else []
 
 
 def _env_ok(varname: str) -> bool:
@@ -95,6 +126,12 @@ def run_safe(
         raise CommandSafetyError(f"cwd does not exist or is not a directory: {cwd!r}")
 
     env = {k: v for k, v in os.environ.items() if _env_ok(k)}
+    user_site_dirs = _user_site_pythonpath()
+    if user_site_dirs:
+        existing = env.get("PYTHONPATH", "")
+        env["PYTHONPATH"] = os.pathsep.join(
+            user_site_dirs + ([existing] if existing else [])
+        )
     if extra_env:
         env.update({k: str(v) for k, v in extra_env.items()})
 

@@ -10,6 +10,10 @@ from ..rules.detector import detect_language
 from ..rules.loader import load_all_rules
 from .base import ContentAnalyzer, register_content
 
+#: Truncate absurd lines before pattern matching (DOS guard; the per-analyzer
+#: CPU budget in ``analyzers.base`` is the outer defense).
+MAX_SCAN_LINE = 8000
+
 
 @register_content
 class BookRulesAnalyzer(ContentAnalyzer):
@@ -62,7 +66,7 @@ class BookRulesAnalyzer(ContentAnalyzer):
         for line in changeset.additions:
             if line.kind != "add":
                 continue
-            text = line.text.rstrip()
+            text = line.text.rstrip()[:MAX_SCAN_LINE]
             if not text.strip() or text.strip().startswith("#"):
                 continue
             for regex, rx, rule in rules:

@@ -35,6 +35,7 @@ from .diffparse import Changeset, parse_diff
 from .memory import MemoryStore
 from .model import ModelClient
 from .models import Finding, ReviewReport, Severity, compute_verdict_score
+from .pathsec import is_within
 from .providers import BaseProvider, ProviderContext
 from .trust import (
     EvidenceStatus,
@@ -129,7 +130,12 @@ class Reviewer:
         file_status: dict = {}
         if working_dir and os.path.isdir(working_dir):
             changed_files = [cs.file for cs in changesets.values() if not cs.file.endswith(("LOCK", "lock"))]
-            existing = [f for f in changed_files if os.path.exists(os.path.join(working_dir, f))]
+            existing = [
+                f for f in changed_files
+                if is_within(working_dir, f)
+                and not os.path.isabs(f)
+                and os.path.exists(os.path.join(working_dir, f))
+            ]
             f_findings, file_status = analyze_files_full(
                 working_dir, existing[:50],
                 timeout=self.config.resources.get("analyzer_timeout", 120),

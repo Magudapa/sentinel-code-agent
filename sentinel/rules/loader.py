@@ -7,12 +7,17 @@ from pathlib import Path
 
 import yaml
 
+from ..yamlsafe import YamlSafetyError, load_yaml_strict
 from .defs import RuleDefinition, dedupe_rules
 from .detector import known_languages, normalize_language
 
 BOOKS_DIR = Path(inspect.getfile(lambda: None)).parent / "books"
 
 REQUIRED_FIELDS = {"id", "language", "description", "severity", "regex"}
+
+#: A rulebook is app data; bound it so a hostile submission can't exhaust memory.
+MAX_BOOK_BYTES = 1_000_000
+MAX_RULES_PER_BOOK = 500
 
 
 def books_dir() -> Path:
@@ -32,11 +37,15 @@ def load_book(language: str) -> list[RuleDefinition]:
     path = book_path(language)
     if not path.exists():
         return []
-    with open(path, encoding="utf-8") as fh:
-        raw = yaml.safe_load(fh) or {}
+    data_bytes = path.read_bytes()
+    if len(data_bytes) > MAX_BOOK_BYTES:
+        raise YamlSafetyError(f"book {path.name} exceeds {MAX_BOOK_BYTES} bytes")
+    raw = load_yaml_strict(data_bytes.decode("utf-8", "replace")) or {}
     entries = raw.get("rules", []) if isinstance(raw, dict) else raw
     if not isinstance(entries, list):
         raise TypeError(f"Book {path.name} must contain a 'rules' list")
+    if len(entries) > MAX_RULES_PER_BOOK:
+        raise YamlSafetyError(f"book {path.name} has too many rules ({len(entries)} > {MAX_RULES_PER_BOOK})")
 
     rules: list[RuleDefinition] = []
     for i, item in enumerate(entries, start=1):
@@ -53,12 +62,22 @@ def load_book(language: str) -> list[RuleDefinition]:
 
 def load_all_rules() -> list[RuleDefinition]:
     """Load every book in the directory. A malformed book is skipped (with a
-    warning) so one bad community submission never breaks the scan."""
+    warning) so one bad community submission never breaks the scan — but the
+    skip is never silent."""
     rules: list[RuleDefinition] = []
     for lang in known_languages():
         try:
             rules.extend(load_book(lang))
-        except Exception:
+        except Exception as exc:
+            # One bad book must not take down the whole scan, but the failure
+            # is real evidence — make it visible instead of swallowing it.
+            import sys
+
+            print(
+                f"WARNING: skipping malformed rule book for '{lang}': "
+                f"{type(exc).__name__}: {exc}",
+                file=sys.stderr,
+            )
             continue
     return dedupe_rules(rules)
 

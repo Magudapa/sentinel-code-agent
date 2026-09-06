@@ -103,3 +103,32 @@ def test_book_analyzer_ignores_other_languages():
 def test_ruleset_registry_registered():
     from sentinel.analyzers.base import CONTENT_ANALYZERS
     assert "sentinel-rules-book" in CONTENT_ANALYZERS
+
+
+def test_write_book_roundtrips_without_name_error(tmp_path, monkeypatch):
+    """Regression: write_book used an undefined ``yaml`` name and crashed.
+
+    The serializer must produce a file that loads back to the same rule,
+    never raise NameError (previously a live crash via `ruleset generate/merge`).
+    """
+    from sentinel.rules import RuleDefinition
+    from sentinel.rules.loader import load_book, write_book
+
+    tmp_book = tmp_path / "python.yml"
+    monkeypatch.setattr("sentinel.rules.loader.book_path", lambda lang: tmp_book)
+
+    rule = RuleDefinition(
+        id="TMP-001",
+        language="python",
+        description="temp roundtrip rule",
+        severity="low",
+        regex="acme_token",
+        author="audit",
+    )
+    out = write_book("python", [rule])
+    assert out == tmp_book
+    assert tmp_book.exists()
+    loaded = load_book("python")
+    assert len(loaded) == 1
+    assert loaded[0].id == "TMP-001"
+    assert loaded[0].regex == "acme_token"

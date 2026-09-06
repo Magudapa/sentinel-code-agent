@@ -4,12 +4,12 @@ from __future__ import annotations
 
 import json
 import shutil
-import subprocess
 import tempfile
 from pathlib import Path
 
 from ..models import Finding, severity_from_str
-from .base import FileAnalyzer, register_file
+from ..process import run_safe
+from .base import FileAnalyzer, MalformedAnalyzerOutput, register_file
 
 
 def _find_bandit_config(cwd: Path) -> tuple[Path | None, list[str]]:
@@ -73,22 +73,31 @@ class BanditAnalyzer(FileAnalyzer):
             cmd = ["bandit", "-q", "-f", "json", "-o", str(report_path)]
             if config_path is not None:
                 cmd += ["-c", str(config_path)]
-            res = subprocess.run(
-                cmd + files,
-                cwd=path, capture_output=True, text=True, check=False,
-                timeout=timeout, env=env,
-            )
-            if res.returncode not in (0, 1) or not report_path.exists():
-                return []
-        except FileNotFoundError:
-            return []
-        except subprocess.TimeoutExpired:
-            raise TimeoutError(f"bandit exceeded {timeout}s") from None
+            res = run_safe(cmd + files, cwd=path, timeout=timeout, extra_env=env or None)
+            if res.timed_out:
+                raise TimeoutError(f"bandit exceeded {timeout}s") from None
+            if res.error:
+                if "program not found" in res.error:
+                    raise FileNotFoundError("bandit binary not found on PATH")
+                raise RuntimeError(res.error)
+            if res.returncode not in (0, 1):
+                raise RuntimeError(f"bandit exited with status {res.returncode}")
+            if not report_path.exists():
+                raise MalformedAnalyzerOutput("bandit ran without producing a JSON report")
+        except (FileNotFoundError, RuntimeError, TimeoutError, MalformedAnalyzerOutput):
+            raise
+        except Exception as exc:
+            raise RuntimeError(f"bandit failed to run: {type(exc).__name__}: {exc}") from exc
 
         try:
             data = json.loads(report_path.read_text(encoding="utf-8"))
-        except Exception:
-            return []
+        except Exception as exc:
+            raise MalformedAnalyzerOutput(
+                f"unparseable bandit JSON report: {type(exc).__name__}"
+            ) from exc
+
+        if not isinstance(data, dict) or not isinstance(data.get("results"), list):
+            raise MalformedAnalyzerOutput("bandit report missing 'results' array")
 
         findings: list[Finding] = []
         for issue in data.get("results", []):

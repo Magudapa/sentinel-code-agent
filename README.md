@@ -306,7 +306,7 @@ Status of the BRD â†’ production milestones:
 | M6 | Auto-fix (validated patches, export + GitHub fix PR) | âœ… |
 | M7 | Codebase memory (fixed-before recall) | âœ… |
 | M8 | MCP server (`sentinel-mcp`) | âœ… |
-| M9 | Streamlit web UI (`streamlit run webapp.py`) | âœ… |
+| M9 | Web surface — Phase-0 REST API (`sentinel serve`, FastAPI) | âœ… |
 | M10 | Tests + docs + lint/bandit green | âœ… |
 | M11 | Docker image + GitHub Action + `sentinel watch` CI | ðŸ”œ |
 | M12 | PyPI release | ðŸ”œ |
