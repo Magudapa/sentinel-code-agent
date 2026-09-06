@@ -2,16 +2,20 @@
 
 from __future__ import annotations
 
-import subprocess
 from pathlib import Path
 
+from ..process import run_safe
 from .base import BaseProvider, ProviderContext, register
 
 
-def _run(cmd: list[str], cwd: Path) -> str:
-    res = subprocess.run(cmd, cwd=cwd, capture_output=True, text=True, check=False)
+def _run(cmd: list[str], cwd: Path, timeout: int = 60) -> str:
+    res = run_safe(cmd, cwd=str(cwd), timeout=timeout)
+    if res.timed_out:
+        raise RuntimeError(f"Command timed out after {timeout}s: {' '.join(cmd)}")
+    if res.error:
+        raise RuntimeError(f"Command failed: {' '.join(cmd)}\n{res.error[:400]}")
     if res.returncode != 0:
-        raise RuntimeError(f"Command failed: {' '.join(cmd)}\n{res.stderr}")
+        raise RuntimeError(f"Command failed: {' '.join(cmd)}\n{res.stderr[:400]}")
     return res.stdout
 
 

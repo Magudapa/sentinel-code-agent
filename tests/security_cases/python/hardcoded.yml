@@ -1,0 +1,66 @@
+cases:
+  - rule_id: S001
+    vulnerable:
+      - "password = 'hunter2secretvalue'"
+      - "api_key = 'AKIAIOSFODNN7EXAMPLE'"
+      - "secret = 'abcdefghijklmnopqrstuvwxyz123456'"
+    safe:
+      - "password = os.environ['DB_PASSWORD']"
+      - "api_key = os.getenv('API_KEY', '')"
+      - "secret = keyring.get_password('svc', 'user')"
+  - rule_id: S002
+    vulnerable:
+      - "ghp_0123456789abcdefghijklmnopqrstuvwxyz"
+      - "sk-proj-0123456789abcdef0123456789abcdef"
+      - "AIzaSyD-Pm0f1vFBJu1vTdqB-0123456789abcdef"
+    safe:
+      - "token = os.environ['GITHUB_TOKEN']"
+  - rule_id: S004
+    vulnerable:
+      - "cur.execute(f'SELECT * FROM users WHERE id = {user_id}')"
+      - "query = 'DELETE FROM t WHERE id = ' + user_input"
+    safe:
+      - "cur.execute('SELECT * FROM users WHERE id = ?', (user_id,))"
+      - "query = 'SELECT id FROM t WHERE name = %s' % (name,)"
+  - rule_id: S005
+    vulnerable:
+      - "result = eval(user_payload)"
+      - "exec(code_string)"
+    safe:
+      - "result = ast.literal_eval(payload)"
+      - "pattern = re.compile(r'\\d+')"
+  - rule_id: S006
+    vulnerable:
+      - "subprocess.run(cmd_string, shell=True)"
+      - "subprocess.Popen('ls -la', shell=True)"
+    safe:
+      - "subprocess.run(cmd_string.split(), shell=False)"
+      - "subprocess.run(['ls', '-la'])"
+  - rule_id: S007
+    vulnerable:
+      - "os.system('shutdown now')"
+      - "os.popen('cat /etc/passwd')"
+    safe:
+      - "subprocess.run(['shutdown'], check=True)"
+  - rule_id: AST-001
+    vulnerable:
+      - "result = eval(user_input)"
+      - "code = compile(payload, '<string>', 'exec')"
+    safe:
+      - "result = ast.literal_eval(user_input)"
+      - "pattern = re.compile(r'\\d+')"
+  - rule_id: AST-003
+    vulnerable:
+      - "subprocess.run(cmd_string, shell=True)"
+    safe:
+      - "subprocess.run(cmd_string.split(), shell=False)"
+  - rule_id: AST-004
+    vulnerable:
+      - "obj = pickle.loads(incoming)"
+    safe:
+      - "obj = json.loads(incoming)"
+  - rule_id: AST-007
+    vulnerable:
+      - "try:\n    parse(data)\nexcept:\n    pass"
+    safe:
+      - "try:\n    parse(data)\nexcept Exception:\n    pass"

@@ -47,6 +47,9 @@ class VerificationResult:
     ai_reason: str = ""
     verified: bool = False
     model: str = ""
+    # reliability metrics (per-rule accuracy reporting)
+    true_positives: int = 0   # count of known-vulnerable samples detected
+    false_positives: int = 0  # count of known-clean samples falsely flagged
 
     def to_dict(self) -> dict:
         return {
@@ -57,6 +60,8 @@ class VerificationResult:
             "reason": self.ai_reason,
             "verified": self.verified,
             "verified_by": self.model,
+            "true_positives": self.true_positives,
+            "false_positives": self.false_positives,
         }
 
 
@@ -83,15 +88,23 @@ def empirical_check(rule: RuleDefinition) -> tuple[bool, str]:
 
 
 def _extract_verdict(raw: str) -> dict:
+    """Strict schema-first parse of the rule-review JSON.
+
+    Malformed output degrades to REVISE + an explicit reason — never a silent
+    PASS and never a hand-set verdict.
+    """
     try:
         m = re.search(r"\{[\s\S]*\}", raw)
-        obj = json.loads(m.group(0)) if m else {}
-    except Exception:
-        obj = {}
+        obj = json.loads(m.group(0)) if m else None
+    except (json.JSONDecodeError, TypeError, ValueError, AttributeError):
+        return {"verdict": "REVISE", "reason": f"malformed model output: {raw[:200]}"}
+    if not isinstance(obj, dict):
+        return {"verdict": "REVISE", "reason": f"model output is not a JSON object: {raw[:200]}"}
     verdict = str(obj.get("verdict", "")).strip().upper()
     if verdict not in ("PASS", "REVISE", "REJECT"):
-        verdict = "REVISE"
-    return {"verdict": verdict, "reason": str(obj.get("reason", raw[:200]))}
+        return {"verdict": "REVISE", "reason": f"unknown verdict {verdict!r}: {raw[:200]}"}
+    reason = str(obj.get("reason", ""))
+    return {"verdict": verdict, "reason": reason or raw[:200]}
 
 
 def ai_check(model: ModelClient, rule: RuleDefinition) -> dict:
@@ -111,6 +124,17 @@ def ai_check(model: ModelClient, rule: RuleDefinition) -> dict:
     return _extract_verdict(raw)
 
 
+def count_correctness(rule: RuleDefinition, vulnerable_samples: list[str], clean_samples: list[str]) -> tuple[int, int]:
+    """Count true positives and false positives on provided sample corpora."""
+    try:
+        rx = re.compile(rule.regex)
+    except re.error:
+        return 0, 0
+    tp = sum(1 for s in vulnerable_samples if rx.search(s))
+    fp = sum(1 for s in clean_samples if rx.search(s))
+    return tp, fp
+
+
 def verify_rule(rule: RuleDefinition, model: ModelClient | None = None) -> VerificationResult:
     """Run both gates. ``verified`` requires empirical + AI PASS."""
     emp_pass, emp_notes = empirical_check(rule)
@@ -120,6 +144,9 @@ def verify_rule(rule: RuleDefinition, model: ModelClient | None = None) -> Verif
         empirical_notes=emp_notes,
         model=(model.config.model if model else ""),
     )
+    vuln = [s for s in (rule.vulnerable_example,) if s]
+    clean = [s for s in (rule.safe_example,) if s]
+    res.true_positives, res.false_positives = count_correctness(rule, vuln, clean)
     if not emp_pass:
         res.verified = False
         return res

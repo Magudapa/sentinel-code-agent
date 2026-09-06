@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import json
+import shutil
 import subprocess
 import tempfile
 from pathlib import Path
@@ -48,8 +49,17 @@ def _under_excluded(rel_file: str, excluded: list[str]) -> bool:
 @register_file
 class BanditAnalyzer(FileAnalyzer):
     name = "bandit"
+    version = "1.2"
+    supported_languages: tuple[str, ...] = ("python",)
 
-    def analyze_files(self, path: str, files: list[str]) -> list[Finding]:
+    def available(self) -> tuple[bool, str]:
+        if shutil.which("bandit"):
+            return True, ""
+        return False, "bandit binary not found on PATH"
+
+    def analyze_files(
+        self, path: str, files: list[str], timeout: int = 120, env: dict | None = None
+    ) -> list[Finding]:
         if not files:
             return []
         cwd = Path(path)
@@ -66,11 +76,14 @@ class BanditAnalyzer(FileAnalyzer):
             res = subprocess.run(
                 cmd + files,
                 cwd=path, capture_output=True, text=True, check=False,
+                timeout=timeout, env=env,
             )
             if res.returncode not in (0, 1) or not report_path.exists():
                 return []
         except FileNotFoundError:
             return []
+        except subprocess.TimeoutExpired:
+            raise TimeoutError(f"bandit exceeded {timeout}s") from None
 
         try:
             data = json.loads(report_path.read_text(encoding="utf-8"))

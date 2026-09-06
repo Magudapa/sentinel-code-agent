@@ -29,8 +29,16 @@ parked with a reason — nothing silently claimed.
 ## Evidence integrity (no AI black box)
 
 - Every finding has deterministic provenance: `rule_id` + analyzer + file + line + `evidence`.
+- Every report has a **verdict** (`VERIFIED` / `INCOMPLETE` / `FAILED`) derived only from
+  deterministic analyzer evidence (`sentinel/trust.py`, `report_verdict`), plus a
+  `VerificationReport` and per-run `analyzer_status`. Semantics are pinned in
+  `tests/test_trust.py` and documented in `SENTINEL_TRUST_INVARIANTS.md`.
+- Missing/not-run required checks force `INCOMPLETE` — never a fabricated PASS
+  ([#9/#56]); a clean report is only `VERIFIED` when every required analyzer ran clean.
 - Book rules get `ai_verified` only via `rules/verify.py` (empirical + independent model verdict).
 - `verdict_score` is computed from findings, never from model opinion.
+- AI explanations are advisory evidence; the model is treated as a prompt-aware,
+  untrusted data channel (prompt-boundary defense + redaction in `model/client.py`).
 
 ## API security
 
@@ -49,3 +57,8 @@ parked with a reason — nothing silently claimed.
 ## Own-repo dogfooding
 
 - CI dies on `bandit`/`ruff` failures; scan this repo regularly; SBOM + signed releases in Phase 1/8.
+- `sentinel benchmark` runs the deterministic regression corpus
+  (`tests/security_cases/`, currently 10 rules / 35 samples at 1.0 precision & recall);
+  a rule regression fails CI before it reaches users.
+- Known gaps are listed in `KNOWN_LIMITATIONS.md`; the roadmap parks Docker autofix
+  isolation and token auth as future phases.

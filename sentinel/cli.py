@@ -80,6 +80,10 @@ def build_parser() -> argparse.ArgumentParser:
     srv.add_argument("--port", type=int, default=8503)
     srv.add_argument("--workspace", default="", help="Root that local scans must stay under (default: cwd)")
     srv.add_argument("--config", default="", help="Path to .sentinel.yml")
+
+    b = sub.add_parser("benchmark", help="Quantify rule quality against the security regression corpus")
+    b.add_argument("--cases", default="", help="Path to a corpus dir (default: tests/security_cases)")
+    b.add_argument("--json", action="store_true", help="Emit raw JSON")
     return p
 
 
@@ -91,13 +95,16 @@ def main(argv: list[str] | None = None) -> int:
         except Exception:
             pass
     args = build_parser().parse_args(argv)
-    config = load_config(args.config or None)
+    config = load_config(getattr(args, "config", None) or None)
 
     if args.cmd == "fix":
         return _cmd_fix(args, config)
 
     if args.cmd == "serve":
         return _cmd_serve(args)
+
+    if args.cmd == "benchmark":
+        return _cmd_benchmark(args)
 
     if args.cmd == "ruleset":
         return _cmd_ruleset(args, config)
@@ -152,9 +159,14 @@ def main(argv: list[str] | None = None) -> int:
         except Exception as e:
             print(f"WARN: could not post comments: {e}", file=sys.stderr)
 
-    # Exit code: 1 if critical findings, 0 otherwise
-    crit = any(f.severity.name == "CRITICAL" for f in report.findings)
-    return 1 if crit else 0
+    # Exit code reflects verification trust: VERIFIED -> 0; anything else is
+    # not a clean pass (INCOMPLETE means we couldn't fully verify).
+    if report.verdict == "VERIFIED" and not any(
+        f.severity.name == "CRITICAL" for f in report.findings
+    ):
+        return 0
+    print(f"Verification: {report.verdict} — {report.verdict_reason}", file=sys.stderr)
+    return 1
 
 
 def _cmd_fix(args, config: SentinelConfig) -> int:
@@ -230,8 +242,25 @@ def _cmd_fix(args, config: SentinelConfig) -> int:
     return 0
 
 
+def _cmd_benchmark(args) -> int:
+    """Run the deterministic rule-quality benchmark on the security regression corpus."""
+    from .benchmark import format_benchmark, run_benchmark
+
+    try:
+        result = run_benchmark(args.cases or None)
+    except Exception as e:
+        print(f"ERROR: benchmark failed: {e}", file=sys.stderr)
+        return 1
+    if args.json:
+        import json as _json
+
+        print(_json.dumps(result, indent=2))
+    else:
+        print(format_benchmark(result))
+    return 0
+
+
 def _cmd_serve(args) -> int:
-    """Run the FastAPI server (localhost by default; keeps the machine private)."""
     try:
         import uvicorn
     except ImportError:

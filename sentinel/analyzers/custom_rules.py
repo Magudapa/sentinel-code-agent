@@ -52,7 +52,7 @@ RULES: list[Rule] = [
     ),
     _build_secret_rule(
         "S002", "AWS / cloud access key",
-        r"(AKIA[0-9A-Z]{16}|ghp_[A-Za-z0-9]{36}|sk-[A-Za-z0-9]{20,}|xox[baprs]-[A-Za-z0-9-]{10,}|AIza[0-9A-Za-z_\-]{35})",
+        r"(AKIA[0-9A-Z]{16}|ghp_[A-Za-z0-9]{36}|sk-[0-9A-Za-z_\-]{20,}|xox[baprs]-[A-Za-z0-9-]{10,}|AIza[0-9A-Za-z_\-]{25,})",
         "This looks like a real credential for AWS/GitHub/OpenAI/Slack/GCP. Revoke it immediately if it was "
         "ever committed and remove it from history ({`git filter-repo`}).",
     ),
@@ -66,8 +66,10 @@ RULES: list[Rule] = [
         "S004", "SQL injection (string interpolation)", Severity.CRITICAL,
         re.compile(
             r"(?i)f['\"][^'\"]*(SELECT|INSERT|UPDATE|DELETE|DROP)[^'\"]*\{"
-            r"|(SELECT|INSERT|UPDATE|DELETE|DROP).{0,120}(%|format\(|\{[a-z0-9_]+\})"
             r"|\.execute\(\s*f['\"]"
+            r"|(SELECT|INSERT|UPDATE|DELETE|DROP).{0,120}\.format\("
+            r"|['\"](SELECT|INSERT|UPDATE|DELETE|DROP)[^'\"]*['\"]\s*\+\s*[a-zA-Z0-9_.\[]"
+            r"|\+\s*['\"](SELECT|INSERT|UPDATE|DELETE|DROP)"
         ),
         "User-controlled input is interpolated into a SQL string, enabling injection. Use parameterised "
         "queries: `cursor.execute('SELECT * FROM t WHERE id = %s', (user_id,))`.",
